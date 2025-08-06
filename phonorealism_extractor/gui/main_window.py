@@ -149,6 +149,9 @@ def create_main_window():
     # Create file dialog once
     with dpg.file_dialog(directory_selector=False, show=False, callback=handle_file_selection, tag="file_dialog_id"):
         dpg.add_file_extension(".wav")
+        dpg.add_file_extension(".aiff")
+        dpg.add_file_extension(".aif")
+        dpg.add_file_extension(".mp3")
 
     def open_file_dialog():
         dpg.show_item("file_dialog_id")
@@ -220,7 +223,8 @@ def create_main_window():
             dpg.set_value("status_text", "Please analyze a file first before synthesizing.")
             return
         
-        output_path = file_path.replace(".wav", "_reconstructed.wav")
+        base, ext = os.path.splitext(file_path)
+        output_path = base + "_render" + ext
         synthesize_from_partials(partials, sr, output_path, duration)
         dpg.set_value("status_text", f"Synthesized audio saved to: {output_path}")
 
