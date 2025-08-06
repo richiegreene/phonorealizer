@@ -112,8 +112,8 @@ def create_main_window():
     with dpg.window(tag="main_window"):
         dpg.set_primary_window("main_window", True)
         with dpg.group(horizontal=True):
-            dpg.add_button(label="Open .wav File", callback=open_file_dialog)
-            dpg.add_button(label="Export to CSV", callback=export_data, tag="export_button", user_data=([], ""))
+            dpg.add_button(label="Open", callback=open_file_dialog)
+            dpg.add_button(label="CSV", callback=export_data, tag="export_button", user_data=([], ""))
             
 import dearpygui.dearpygui as dpg
 from core.analyzer import analyze_audio
@@ -248,11 +248,11 @@ def create_main_window():
     with dpg.window(tag="main_window"):
         dpg.set_primary_window("main_window", True)
         with dpg.group(horizontal=True):
-            dpg.add_button(label="Open .wav File", callback=open_file_dialog)
-            dpg.add_button(label="Export to CSV", callback=export_csv_data, tag="export_csv_button", user_data=([], ""))
-            dpg.add_button(label="Export Full", callback=export_full_wav, tag="export_full_button", user_data=([], "", 0, 0))
-            dpg.add_button(label="Export Partials", callback=export_selected_partials, tag="export_partials_button", user_data=([], "", 0, 0))
-            dpg.add_button(label="Toggle Spectrogram", callback=toggle_spectrogram)
+            dpg.add_button(label="Open", callback=open_file_dialog)
+            dpg.add_button(label="csv", callback=export_csv_data, tag="export_csv_button", user_data=([], ""))
+            dpg.add_button(label="Full (wav)", callback=export_full_wav, tag="export_full_button", user_data=([], "", 0, 0))
+            dpg.add_button(label="Partials (wav)", callback=export_selected_partials, tag="export_partials_button", user_data=([], "", 0, 0))
+            dpg.add_button(label="Spectrogram", callback=toggle_spectrogram)
         dpg.add_text("", tag="status_text")
 
     dpg.create_viewport(title='Phonorealism Analysis Tool', width=800, height=600)
