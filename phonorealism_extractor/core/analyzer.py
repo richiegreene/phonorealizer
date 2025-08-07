@@ -2,7 +2,7 @@
 import librosa
 import numpy as np
 
-def analyze_audio(file_path, num_harmonics=16):
+def analyze_audio(file_path, num_harmonics=32):
     """
     Analyzes an audio file to extract harmonic partials.
 

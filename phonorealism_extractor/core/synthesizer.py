@@ -29,7 +29,7 @@ def synthesize_from_partials(partials, sr, output_wav_path, duration):
         if not harmonic:
             continue
         time_array, freq_array, amp_array = zip(*harmonic)
-        # Halve the frequency for synthesis
+        # octave transpose frequency for synthesis
         freq_array_halved = [f * 0.5 for f in freq_array]
         partial_wave = generate_partial_waveform(time_array, freq_array_halved, amp_array, sr, duration)
         waveform[:len(partial_wave)] += partial_wave
