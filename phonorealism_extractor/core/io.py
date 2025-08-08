@@ -1,4 +1,3 @@
-
 import csv
 import soundfile as sf
 import numpy as np
@@ -83,7 +82,6 @@ def save_full_svg(partials, output_path, sr, duration, scale='log'):
         if len(filtered_points) < 2:
             continue
         times, freqs, amps_db = zip(*filtered_points)
-
         # --- 1. Calculate centerline coordinates ---
         points = []
         for i in range(len(times)):
@@ -113,7 +111,7 @@ def save_full_svg(partials, output_path, sr, duration, scale='log'):
         min_amp_db = np.min(amps_db)
         max_linear_amp = db_to_linear(max_amp_db)
         min_linear_amp = db_to_linear(min_amp_db)
-        
+    
         stroke_widths = []
         for amp_db in amps_db:
             linear_amp = db_to_linear(amp_db)
@@ -219,7 +217,6 @@ def save_partial_svg(harmonic, output_path, sr, duration, scale='log'):
         dwg.save()
         return
     times, freqs, amps_db = zip(*filtered_points)
-
     # --- 1. Calculate centerline coordinates ---
     points = []
     for i in range(len(times)):
@@ -326,5 +323,41 @@ def save_partial_svg(harmonic, output_path, sr, duration, scale='log'):
     dwg.add(dwg.path(d=path_d,
                      stroke='none',
                      fill=svgwrite.rgb(0, 0, 0, '%')))
+
+    dwg.save()
+
+def save_waveform_svg(audio_data, output_path, sr):
+    """
+    Saves an audio waveform to an SVG file.
+
+    Args:
+        audio_data (np.ndarray): The audio data.
+        output_path (str): The path to the output SVG file.
+        sr (int): The sample rate.
+    """
+    dwg = svgwrite.Drawing(output_path, profile='tiny')
+
+    # Define SVG dimensions
+    svg_width = 1000
+    svg_height = 500
+    dwg.viewbox(0, 0, svg_width, svg_height)
+
+    # --- 1. Prepare data for SVG ---
+    num_samples = len(audio_data)
+    time_scale = svg_width / num_samples
+    amp_scale = svg_height / 2.0
+
+    # --- 2. Create the path string ---
+    path_d = f"M 0,{svg_height / 2} "
+    for i, sample in enumerate(audio_data):
+        x = i * time_scale
+        y = (svg_height / 2) - (sample * amp_scale)
+        path_d += f"L {x},{y} "
+
+    # --- 3. Add path to drawing ---
+    dwg.add(dwg.path(d=path_d,
+                     stroke=svgwrite.rgb(0, 0, 0, '%'),
+                     fill='none',
+                     stroke_width=1))
 
     dwg.save()

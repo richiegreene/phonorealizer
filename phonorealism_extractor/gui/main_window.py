@@ -1,6 +1,6 @@
 import dearpygui.dearpygui as dpg
 from core.analyzer import analyze_audio
-from core.io import save_partials_to_csv, save_full_svg, save_partial_svg
+from core.io import save_partials_to_csv, save_full_svg, save_partial_svg, save_waveform_svg
 from core.synthesizer import synthesize_from_partials
 import numpy as np
 import librosa
@@ -34,6 +34,7 @@ def create_main_window():
             dpg.set_item_user_data("export_partials_wav_button", (filtered_partials, file_path, sr, duration))
             dpg.set_item_user_data("export_log_svg_button", (filtered_partials, file_path, sr, duration))
             dpg.set_item_user_data("export_lin_svg_button", (filtered_partials, file_path, sr, duration))
+            dpg.set_item_user_data("export_waveform_svg_button", (filtered_partials, file_path, sr, duration))
 
     # Create file dialog once
     with dpg.file_dialog(directory_selector=False, show=False, callback=handle_file_selection, tag="file_dialog_id"):
@@ -186,6 +187,46 @@ def create_main_window():
         
         dpg.set_value("status_text", f"Exported {exported_count} selected harmonics to: {output_dir}")
 
+    def export_waveform_svg(sender, app_data, user_data):
+        partials, file_path, sr, duration = user_data
+        if not file_path:
+            dpg.set_value("status_text", "Please analyze a file first before exporting.")
+            return
+
+        # Export full waveform
+        y, sr = librosa.load(file_path, sr=None)
+        base, ext = os.path.splitext(file_path)
+        output_path = base + "_waveform.svg"
+        save_waveform_svg(y, output_path, sr)
+
+        # Export partial waveforms
+        output_dir = os.path.splitext(file_path)[0] + "_selected_harmonics_waveform_svg"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        exported_count = 0
+        for i, harmonic in enumerate(partials):
+            harmonic_number = i + 1
+            harmonic_tag = f"harmonic_line_{harmonic_number}"
+            if dpg.does_item_exist(harmonic_tag) and dpg.is_item_shown(harmonic_tag):
+                output_path = os.path.join(output_dir, f"harmonic_{harmonic_number}_waveform.svg")
+                
+                # Synthesize harmonic to get audio data
+                if not harmonic:
+                    continue
+                times, freqs, amps_db = zip(*harmonic)
+                t = np.linspace(0., duration, int(sr * duration))
+                interp_freqs = np.interp(t, times, freqs)
+                interp_amps_db = np.interp(t, times, amps_db)
+                interp_amps = librosa.db_to_amplitude(interp_amps_db)
+                harmonic_wave = interp_amps * np.sin(2 * np.pi * interp_freqs * t)
+                if np.max(np.abs(harmonic_wave)) > 0:
+                    harmonic_wave /= np.max(np.abs(harmonic_wave))
+
+                save_waveform_svg(harmonic_wave, output_path, sr)
+                exported_count += 1
+        
+        dpg.set_value("status_text", f"Exported {exported_count} selected harmonics waveforms to: {output_dir}")
+
 
     with dpg.window(tag="main_window"):
         dpg.set_primary_window("main_window", True)
@@ -196,6 +237,7 @@ def create_main_window():
             dpg.add_button(label="Partials (wav)", callback=export_selected_partials_wav, tag="export_partials_wav_button", user_data=([], "", 0, 0))
             dpg.add_button(label="Log (svg)", callback=export_log_svg, tag="export_log_svg_button", user_data=([], "", 0, 0))
             dpg.add_button(label="Lin (svg)", callback=export_lin_svg, tag="export_lin_svg_button", user_data=([], "", 0, 0))
+            dpg.add_button(label="Waveform (svg)", callback=export_waveform_svg, tag="export_waveform_svg_button", user_data=([], "", 0, 0))
             dpg.add_button(label="Spectrogram", callback=toggle_spectrogram)
         dpg.add_text("", tag="status_text")
 
