@@ -48,7 +48,7 @@ def save_harmonic_to_wav(harmonic, sr, output_path):
     harmonic_wave /= np.max(np.abs(harmonic_wave))
     sf.write(output_path, harmonic_wave, sr)
 
-def save_full_svg(partials, output_path, sr, duration, scale='log', svg_width=1000, svg_height=500, gain=1.0):
+def save_full_svg(partials, output_path, sr, duration, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude'):
     dwg = svgwrite.Drawing(output_path, profile='tiny')
 
     # Define SVG dimensions and scaling
@@ -111,15 +111,19 @@ def save_full_svg(partials, output_path, sr, duration, scale='log', svg_width=10
         min_linear_amp = db_to_linear(min_amp_db)
     
         stroke_widths = []
-        for amp_db in amps_db:
-            linear_amp = db_to_linear(amp_db)
-            if max_linear_amp > min_linear_amp:
-                normalized_amp = (linear_amp - min_linear_amp) / (max_linear_amp - min_linear_amp)
-            else:
-                normalized_amp = 0
-            stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
-            stroke_width *= gain
-            stroke_widths.append(stroke_width)
+        if render_mode == 'amplitude':
+            for amp_db in amps_db:
+                linear_amp = db_to_linear(amp_db)
+                if max_linear_amp > min_linear_amp:
+                    normalized_amp = (linear_amp - min_linear_amp) / (max_linear_amp - min_linear_amp)
+                else:
+                    normalized_amp = 0
+                stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
+                stroke_width *= gain
+                stroke_widths.append(stroke_width)
+        else: # render_mode == 'line'
+            for _ in amps_db:
+                stroke_widths.append(min_stroke_width * gain)
 
         # --- 3. Calculate normals at each point ---
         normals = []
@@ -186,7 +190,7 @@ def save_full_svg(partials, output_path, sr, duration, scale='log', svg_width=10
 
     dwg.save()
 
-def save_partial_svg(harmonic, output_path, sr, duration, scale='log', svg_width=1000, svg_height=500, gain=1.0):
+def save_partial_svg(harmonic, output_path, sr, duration, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude'):
     dwg = svgwrite.Drawing(output_path, profile='tiny')
 
     # Define SVG dimensions and scaling
@@ -249,15 +253,19 @@ def save_partial_svg(harmonic, output_path, sr, duration, scale='log', svg_width
     min_stroke_width = 0.1 # Min line thickness in SVG
     
     stroke_widths = []
-    for amp_db in amps_db:
-        linear_amp = db_to_linear(amp_db)
-        if max_linear_amp > min_linear_amp:
-            normalized_amp = (linear_amp - min_linear_amp) / (max_linear_amp - min_linear_amp)
-        else:
-            normalized_amp = 0
-        stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
-        stroke_width *= gain
-        stroke_widths.append(stroke_width)
+    if render_mode == 'amplitude':
+        for amp_db in amps_db:
+            linear_amp = db_to_linear(amp_db)
+            if max_linear_amp > min_linear_amp:
+                normalized_amp = (linear_amp - min_linear_amp) / (max_linear_amp - min_linear_amp)
+            else:
+                normalized_amp = 0
+            stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
+            stroke_width *= gain
+            stroke_widths.append(stroke_width)
+    else: # render_mode == 'line'
+        for _ in amps_db:
+            stroke_widths.append(min_stroke_width * gain)
 
     # --- 3. Calculate normals at each point ---
     normals = []
