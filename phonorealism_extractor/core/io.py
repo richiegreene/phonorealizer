@@ -339,21 +339,57 @@ def save_waveform_svg(audio_data, output_path, sr, svg_width=1000, svg_height=50
     dwg.viewbox(0, 0, svg_width, svg_height)
 
     # --- 1. Prepare data for SVG ---
+    # Downsample audio_data if it has more points than max_points
+    if len(audio_data) > max_points:
+        indices = np.linspace(0, len(audio_data) - 1, max_points, dtype=int)
+        audio_data = audio_data[indices]
+
     num_samples = len(audio_data)
     time_scale = svg_width / num_samples
-    amp_scale = svg_height / 2.0
+    
+    # Calculate amplitude envelope
+    amps = np.abs(audio_data)
+    max_amp = np.max(amps)
+    min_amp = np.min(amps)
+
+    max_stroke_width = svg_height / 2.0 # Max line thickness can be half SVG height
+    min_stroke_width = 0.1 # Min line thickness
+
+    # Calculate scaled stroke widths
+    scaled_stroke_widths = []
+    for amp in amps:
+        if max_amp > min_amp:
+            normalized_amp = (amp - min_amp) / (max_amp - min_amp)
+        else:
+            normalized_amp = 0
+        stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
+        scaled_stroke_widths.append(stroke_width * gain)
 
     # --- 2. Create the path string ---
-    path_d = f"M 0,{svg_height / 2} "
-    for i, sample in enumerate(audio_data):
+    top_path_coords = []
+    bottom_path_coords = []
+    center_y = svg_height / 2.0
+
+    for i in range(num_samples):
         x = i * time_scale
-        y = (svg_height / 2) - (sample * amp_scale * gain)
-        path_d += f"L {x},{y} "
+        half_width = scaled_stroke_widths[i] / 2.0
+        y_top = center_y - half_width
+        y_bottom = center_y + half_width
+        top_path_coords.append((x, y_top))
+        bottom_path_coords.append((x, y_bottom))
+
+    path_d = f"M {top_path_coords[0][0]},{top_path_coords[0][1]} "
+    for p in top_path_coords[1:]:
+        path_d += f"L {p[0]},{p[1]} "
+    
+    path_d += f"L {bottom_path_coords[-1][0]},{bottom_path_coords[-1][1]} "
+    for p in reversed(bottom_path_coords[:-1]):
+        path_d += f"L {p[0]},{p[1]} "
+    path_d += "Z"
 
     # --- 3. Add path to drawing ---
     dwg.add(dwg.path(d=path_d,
-                     stroke=svgwrite.rgb(0, 0, 0, '%'),
-                     fill='none',
-                     stroke_width=1))
+                     stroke='none',
+                     fill=svgwrite.rgb(0, 0, 0, '%')))
 
     dwg.save()

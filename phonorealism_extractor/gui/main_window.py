@@ -13,6 +13,9 @@ def create_main_window():
 
     def handle_file_selection(sender, app_data):
         file_path = app_data['file_path_name']
+        if not os.path.isfile(file_path):
+            dpg.set_value("status_text", f"Error: Selected path is not a valid file: {file_path}")
+            return
         dpg.set_value("status_text", f"Analyzing: {file_path}")
         y, sr = librosa.load(file_path, sr=None)
         
@@ -157,6 +160,7 @@ def create_main_window():
         svg_width = dpg.get_value("svg_width_input")
         svg_height = dpg.get_value("svg_height_input")
         svg_gain = dpg.get_value("svg_gain_input")
+        svg_max_points = dpg.get_value("svg_max_points_input")
 
         if not file_path:
             dpg.set_value("status_text", "Please analyze a file first before exporting.")
@@ -211,7 +215,7 @@ def create_main_window():
                     if np.max(np.abs(harmonic_wave)) > 0:
                         harmonic_wave /= np.max(np.abs(harmonic_wave))
 
-                    save_waveform_svg(harmonic_wave, output_path, sr, svg_width=svg_width, svg_height=svg_height, gain=svg_gain)
+                    save_waveform_svg(harmonic_wave, output_path, sr, svg_width=svg_width, svg_height=svg_height, gain=svg_gain, max_points=svg_max_points)
                     exported_count += 1
             
             dpg.set_value("status_text", f"Exported {exported_count} selected harmonics waveforms to: {output_dir}")
@@ -236,6 +240,7 @@ def create_main_window():
         dpg.add_input_int(label="Width", tag="svg_width_input", default_value=1000)
         dpg.add_input_int(label="Height", tag="svg_height_input", default_value=500)
         dpg.add_input_float(label="Gain", tag="svg_gain_input", default_value=1.0, step=0.1)
+        dpg.add_input_int(label="Max Waveform Points", tag="svg_max_points_input", default_value=5000, step=100)
         with dpg.group(horizontal=True):
             dpg.add_button(label="Export", callback=do_export_svg, tag="export_svg_button")
             dpg.add_button(label="Cancel", callback=lambda: dpg.hide_item("svg_export_modal"))
