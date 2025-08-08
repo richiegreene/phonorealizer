@@ -117,20 +117,20 @@ def save_partial_svg(harmonic, output_path, sr, duration):
     time_scale = svg_width / duration
     freq_scale = svg_height / (sr / 2) # Max frequency is Nyquist
 
-    # Max amplitude for normalization (adjust as needed based on expected range)
-    max_amp_db = 0 # Assuming 0dB is max
-    min_amp_db = -120 # Assuming -120dB is min
-    max_linear_amp = db_to_linear(max_amp_db)
-    min_linear_amp = db_to_linear(min_amp_db)
-
-    max_stroke_width = 5 # Max line thickness in SVG
-    min_stroke_width = 0.1 # Min line thickness in SVG
-
     if not harmonic:
         dwg.save()
         return
 
     times, freqs, amps_db = zip(*harmonic)
+
+    # Normalize amplitude for this partial specifically
+    max_amp_db = np.max(amps_db)
+    min_amp_db = np.min(amps_db)
+    max_linear_amp = db_to_linear(max_amp_db)
+    min_linear_amp = db_to_linear(min_amp_db)
+
+    max_stroke_width = 5 # Max line thickness in SVG
+    min_stroke_width = 0.1 # Min line thickness in SVG
 
     for i in range(len(times) - 1):
         t1, f1, a1_db = times[i], freqs[i], amps_db[i]
@@ -146,7 +146,11 @@ def save_partial_svg(harmonic, output_path, sr, duration):
         avg_amp_db = (a1_db + a2_db) / 2
         avg_linear_amp = db_to_linear(avg_amp_db)
 
-        normalized_amp = (avg_linear_amp - min_linear_amp) / (max_linear_amp - min_linear_amp)
+        # Normalize linear amplitude to stroke width range
+        if max_linear_amp - min_linear_amp > 0:
+            normalized_amp = (avg_linear_amp - min_linear_amp) / (max_linear_amp - min_linear_amp)
+        else:
+            normalized_amp = 0
         stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
         stroke_width = max(min_stroke_width, min(max_stroke_width, stroke_width)) # Clamp values
 
