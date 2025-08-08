@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Phonorealism Performer - Conductor</title>
+</head>
+<body>
+    <h1>Conductor</h1>
+    <input type="file" id="csv-file" accept=".csv">
+    <button id="start-session">Start Session</button>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script>
+        const socket = io();
+
+        document.getElementById('start-session').addEventListener('click', () => {
+            const file = document.getElementById('csv-file').files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const text = e.target.result;
+                    socket.emit('start_session', { data: text });
+                };
+                reader.readAsText(file);
+            }
+        });
+
+        socket.on('session_started', (data) => {
+            for (let i = 1; i <= data.num_players; i++) {
+                window.open(`/player/${i}`);
+            }
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Phonorealism Performer - Player</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; }
+        .container { display: flex; width: 100%; height: 100%; }
+        .panel { width: 50%; height: 100%; position: relative; }
+        canvas { width: 100%; height: 50%; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="panel" id="realtime-panel">
+            <h2>Real-time</h2>
+            <canvas id="realtime-pitch-chart"></canvas>
+            <canvas id="realtime-loudness-chart"></canvas>
+        </div>
+        <div class="panel" id="score-panel">
+            <h2>Score</h2>
+            <canvas id="score-pitch-chart"></canvas>
+            <canvas id="score-loudness-chart"></canvas>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pitchy@4.0.5/dist/pitchy.min.js"></script>
+    <script src="{{ url_for('static', filename='js/player.js') }}"></script>
+</body>
+</html>
