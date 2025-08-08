@@ -33,8 +33,7 @@ def create_main_window():
             dpg.set_value("status_text", f"Analysis complete for: {file_path}")
             visualize_partials(file_path, filtered_partials)
             dpg.set_item_user_data("export_csv_button", (filtered_partials, file_path))
-            dpg.set_item_user_data("export_full_wav_button", (filtered_partials, file_path, sr, duration))
-            dpg.set_item_user_data("export_partials_wav_button", (filtered_partials, file_path, sr, duration))
+            dpg.set_item_user_data("export_wav_button", (filtered_partials, file_path, sr, duration))
             dpg.set_item_user_data("export_log_svg_button", (filtered_partials, file_path, sr, duration))
             dpg.set_item_user_data("export_lin_svg_button", (filtered_partials, file_path, sr, duration))
             dpg.set_item_user_data("export_waveform_svg_button", (filtered_partials, file_path, sr, duration))
@@ -111,23 +110,19 @@ def create_main_window():
         save_partials_to_csv(partials, output_path)
         dpg.set_value("status_text", f"Exported partials to: {output_path}")
 
-    def export_full_wav(sender, app_data, user_data):
+    def export_wav(sender, app_data, user_data):
         partials, file_path, sr, duration = user_data
         if not file_path:
             dpg.set_value("status_text", "Please analyze a file first before synthesizing.")
             return
         
+        # Export full waveform
         base, ext = os.path.splitext(file_path)
         output_path = base + "_render" + ext
         synthesize_from_partials(partials, sr, output_path, duration)
-        dpg.set_value("status_text", f"Synthesized audio saved to: {output_path}")
+        dpg.set_value("status_text", f"Synthesized full audio to: {output_path}")
 
-    def export_selected_partials_wav(sender, app_data, user_data):
-        partials, file_path, sr, duration = user_data
-        if not file_path:
-            dpg.set_value("status_text", "Please analyze a file first before exporting partials.")
-            return
-
+        # Export partial waveforms
         output_dir = os.path.splitext(file_path)[0] + "_selected_harmonics_wav"
         os.makedirs(output_dir, exist_ok=True)
         
@@ -140,7 +135,7 @@ def create_main_window():
                 synthesize_from_partials([harmonic], sr, output_path, duration)
                 exported_count += 1
         
-        dpg.set_value("status_text", f"Exported {exported_count} selected harmonics to: {output_dir}")
+        dpg.set_value("status_text", f"Synthesized {exported_count} selected harmonics to: {output_dir}")
 
     def export_log_svg(sender, app_data, user_data):
         dpg.show_item("svg_export_modal")
@@ -190,7 +185,7 @@ def create_main_window():
             y, sr = librosa.load(file_path, sr=None)
             base, ext = os.path.splitext(file_path)
             output_path = base + "_waveform.svg"
-            save_waveform_svg(y, output_path, sr, svg_width=svg_width, svg_height=svg_height, gain=svg_gain)
+            save_waveform_svg(y, output_path, sr, svg_width=svg_width, svg_height=svg_height, gain=svg_gain, max_points=svg_max_points)
 
             # Export partial waveforms
             output_dir = os.path.splitext(file_path)[0] + "_selected_harmonics_waveform_svg"
@@ -228,8 +223,7 @@ def create_main_window():
         with dpg.group(horizontal=True):
             dpg.add_button(label="Open", callback=open_file_dialog)
             dpg.add_button(label="csv", callback=export_csv_data, tag="export_csv_button", user_data=([], ""))
-            dpg.add_button(label="Full (wav)", callback=export_full_wav, tag="export_full_wav_button", user_data=([], "", 0, 0))
-            dpg.add_button(label="Partials (wav)", callback=export_selected_partials_wav, tag="export_partials_wav_button", user_data=([], "", 0, 0))
+            dpg.add_button(label="Synthesize (wav)", callback=export_wav, tag="export_wav_button", user_data=([], "", 0, 0))
             dpg.add_button(label="Log (svg)", callback=export_log_svg, tag="export_log_svg_button", user_data=([], "", 0, 0))
             dpg.add_button(label="Lin (svg)", callback=export_lin_svg, tag="export_lin_svg_button", user_data=([], "", 0, 0))
             dpg.add_button(label="Waveform (svg)", callback=export_waveform_svg, tag="export_waveform_svg_button", user_data=([], "", 0, 0))
