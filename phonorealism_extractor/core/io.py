@@ -48,12 +48,10 @@ def save_harmonic_to_wav(harmonic, sr, output_path):
     harmonic_wave /= np.max(np.abs(harmonic_wave))
     sf.write(output_path, harmonic_wave, sr)
 
-def save_full_svg(partials, output_path, sr, duration, scale='log'):
+def save_full_svg(partials, output_path, sr, duration, scale='log', svg_width=1000, svg_height=500):
     dwg = svgwrite.Drawing(output_path, profile='tiny')
 
     # Define SVG dimensions and scaling
-    svg_width = 1000
-    svg_height = 500
     dwg.viewbox(0, 0, svg_width, svg_height)
 
     # Scaling factors
@@ -187,12 +185,10 @@ def save_full_svg(partials, output_path, sr, duration, scale='log'):
 
     dwg.save()
 
-def save_partial_svg(harmonic, output_path, sr, duration, scale='log'):
+def save_partial_svg(harmonic, output_path, sr, duration, scale='log', svg_width=1000, svg_height=500):
     dwg = svgwrite.Drawing(output_path, profile='tiny')
 
     # Define SVG dimensions and scaling
-    svg_width = 1000
-    svg_height = 500
     dwg.viewbox(0, 0, svg_width, svg_height)
 
     # Scaling factors
@@ -326,7 +322,7 @@ def save_partial_svg(harmonic, output_path, sr, duration, scale='log'):
 
     dwg.save()
 
-def save_waveform_svg(audio_data, output_path, sr):
+def save_waveform_svg(audio_data, output_path, sr, svg_width=1000, svg_height=500):
     """
     Saves an audio waveform to an SVG file.
 
@@ -338,8 +334,6 @@ def save_waveform_svg(audio_data, output_path, sr):
     dwg = svgwrite.Drawing(output_path, profile='tiny')
 
     # Define SVG dimensions
-    svg_width = 1000
-    svg_height = 500
     dwg.viewbox(0, 0, svg_width, svg_height)
 
     # --- 1. Prepare data for SVG ---
