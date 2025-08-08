@@ -87,12 +87,19 @@ def create_main_window():
             y_axis = dpg.add_plot_axis(dpg.mvYAxis, label="Frequency (Hz)")
             dpg.add_image_series(texture_tag="spectrogram_texture", bounds_min=(0, 0), bounds_max=(x_max, sr / 2), parent=y_axis, tag="spectrogram_image_series")
 
+            # Create a theme for white lines
+            with dpg.theme(tag="white_line_theme"):
+                with dpg.theme_component(dpg.mvLineSeries):
+                    dpg.add_theme_color(dpg.mvPlotCol_Line, (255, 255, 255, 255), category=dpg.mvThemeCat_Plots)
+
             for i, harmonic in enumerate(partials):
                 if harmonic:
                     times, freqs, _ = zip(*harmonic)
                     # Halve the frequency for correct visualization
                     freqs_halved = [f * 0.5 for f in freqs]
-                    dpg.add_line_series(x=list(times), y=list(freqs_halved), label=f"Harmonic {i+1}", parent=y_axis, tag=f"harmonic_line_{i+1}")
+                    line_tag = f"harmonic_line_{i+1}"
+                    dpg.add_line_series(x=list(times), y=list(freqs_halved), label=f"Harmonic {i+1}", parent=y_axis, tag=line_tag)
+                    dpg.bind_item_theme(line_tag, "white_line_theme")
 
     def toggle_spectrogram(sender, app_data, user_data):
         if dpg.does_item_exist("spectrogram_image_series"):
