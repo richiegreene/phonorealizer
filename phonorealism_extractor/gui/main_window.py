@@ -32,8 +32,8 @@ def create_main_window():
             dpg.set_item_user_data("export_csv_button", (filtered_partials, file_path))
             dpg.set_item_user_data("export_full_wav_button", (filtered_partials, file_path, sr, duration))
             dpg.set_item_user_data("export_partials_wav_button", (filtered_partials, file_path, sr, duration))
-            dpg.set_item_user_data("export_full_svg_button", (filtered_partials, file_path, sr, duration))
-            dpg.set_item_user_data("export_partials_svg_button", (filtered_partials, file_path, sr, duration))
+            dpg.set_item_user_data("export_log_svg_button", (filtered_partials, file_path, sr, duration))
+            dpg.set_item_user_data("export_lin_svg_button", (filtered_partials, file_path, sr, duration))
 
     # Create file dialog once
     with dpg.file_dialog(directory_selector=False, show=False, callback=handle_file_selection, tag="file_dialog_id"):
@@ -138,24 +138,17 @@ def create_main_window():
         
         dpg.set_value("status_text", f"Exported {exported_count} selected harmonics to: {output_dir}")
 
-    def export_full_svg(sender, app_data, user_data):
+    def export_log_svg(sender, app_data, user_data):
         partials, file_path, sr, duration = user_data
         if not file_path:
             dpg.set_value("status_text", "Please analyze a file first before exporting.")
             return
         
         base, ext = os.path.splitext(file_path)
-        output_path = base + "_render.svg"
-        save_full_svg(partials, output_path, sr, duration)
-        dpg.set_value("status_text", f"Exported full SVG to: {output_path}")
+        output_path = base + "_render_log.svg"
+        save_full_svg(partials, output_path, sr, duration, scale='log')
 
-    def export_selected_partials_svg(sender, app_data, user_data):
-        partials, file_path, sr, duration = user_data
-        if not file_path:
-            dpg.set_value("status_text", "Please analyze a file first before exporting partials.")
-            return
-
-        output_dir = os.path.splitext(file_path)[0] + "_selected_harmonics_svg"
+        output_dir = os.path.splitext(file_path)[0] + "_selected_harmonics_log_svg"
         os.makedirs(output_dir, exist_ok=True)
         
         exported_count = 0
@@ -164,7 +157,31 @@ def create_main_window():
             harmonic_tag = f"harmonic_line_{harmonic_number}"
             if dpg.does_item_exist(harmonic_tag) and dpg.is_item_shown(harmonic_tag):
                 output_path = os.path.join(output_dir, f"harmonic_{harmonic_number}.svg")
-                save_partial_svg(harmonic, output_path, sr, duration)
+                save_partial_svg(harmonic, output_path, sr, duration, scale='log')
+                exported_count += 1
+        
+        dpg.set_value("status_text", f"Exported {exported_count} selected harmonics to: {output_dir}")
+
+    def export_lin_svg(sender, app_data, user_data):
+        partials, file_path, sr, duration = user_data
+        if not file_path:
+            dpg.set_value("status_text", "Please analyze a file first before exporting.")
+            return
+        
+        base, ext = os.path.splitext(file_path)
+        output_path = base + "_render_lin.svg"
+        save_full_svg(partials, output_path, sr, duration, scale='lin')
+
+        output_dir = os.path.splitext(file_path)[0] + "_selected_harmonics_lin_svg"
+        os.makedirs(output_dir, exist_ok=True)
+        
+        exported_count = 0
+        for i, harmonic in enumerate(partials):
+            harmonic_number = i + 1
+            harmonic_tag = f"harmonic_line_{harmonic_number}"
+            if dpg.does_item_exist(harmonic_tag) and dpg.is_item_shown(harmonic_tag):
+                output_path = os.path.join(output_dir, f"harmonic_{harmonic_number}.svg")
+                save_partial_svg(harmonic, output_path, sr, duration, scale='lin')
                 exported_count += 1
         
         dpg.set_value("status_text", f"Exported {exported_count} selected harmonics to: {output_dir}")
@@ -177,8 +194,8 @@ def create_main_window():
             dpg.add_button(label="csv", callback=export_csv_data, tag="export_csv_button", user_data=([], ""))
             dpg.add_button(label="Full (wav)", callback=export_full_wav, tag="export_full_wav_button", user_data=([], "", 0, 0))
             dpg.add_button(label="Partials (wav)", callback=export_selected_partials_wav, tag="export_partials_wav_button", user_data=([], "", 0, 0))
-            dpg.add_button(label="Full (svg)", callback=export_full_svg, tag="export_full_svg_button", user_data=([], "", 0, 0))
-            dpg.add_button(label="Partials (svg)", callback=export_selected_partials_svg, tag="export_partials_svg_button", user_data=([], "", 0, 0))
+            dpg.add_button(label="Log (svg)", callback=export_log_svg, tag="export_log_svg_button", user_data=([], "", 0, 0))
+            dpg.add_button(label="Lin (svg)", callback=export_lin_svg, tag="export_lin_svg_button", user_data=([], "", 0, 0))
             dpg.add_button(label="Spectrogram", callback=toggle_spectrogram)
         dpg.add_text("", tag="status_text")
 

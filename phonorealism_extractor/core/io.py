@@ -49,7 +49,7 @@ def save_harmonic_to_wav(harmonic, sr, output_path):
     harmonic_wave /= np.max(np.abs(harmonic_wave))
     sf.write(output_path, harmonic_wave, sr)
 
-def save_full_svg(partials, output_path, sr, duration):
+def save_full_svg(partials, output_path, sr, duration, scale='log'):
     dwg = svgwrite.Drawing(output_path, profile='tiny')
 
     # Define SVG dimensions and scaling
@@ -60,6 +60,8 @@ def save_full_svg(partials, output_path, sr, duration):
     # Scaling factors
     time_scale = svg_width / duration
     freq_scale = svg_height / (sr / 2) # Max frequency is Nyquist
+    min_freq_log = np.log10(20) # min audible frequency
+    max_freq_log = np.log10(sr/2)
 
     max_stroke_width = 5 # Max line thickness in SVG
     min_stroke_width = 0.1 # Min line thickness in SVG
@@ -83,10 +85,14 @@ def save_full_svg(partials, output_path, sr, duration):
 
             # Convert to SVG coordinates
             x1 = t1 * time_scale
-            y1 = svg_height - (f1 * freq_scale) # SVG Y-axis is inverted
-
             x2 = t2 * time_scale
-            y2 = svg_height - (f2 * freq_scale)
+
+            if scale == 'log':
+                y1 = svg_height - ((np.log10(max(f1, 20)) - min_freq_log) / (max_freq_log - min_freq_log)) * svg_height
+                y2 = svg_height - ((np.log10(max(f2, 20)) - min_freq_log) / (max_freq_log - min_freq_log)) * svg_height
+            else:
+                y1 = svg_height - (f1 * freq_scale) # SVG Y-axis is inverted
+                y2 = svg_height - (f2 * freq_scale)
 
             # Interpolate amplitude for stroke width
             # Simple average for segment, or more complex interpolation if needed
@@ -108,7 +114,7 @@ def save_full_svg(partials, output_path, sr, duration):
 
     dwg.save()
 
-def save_partial_svg(harmonic, output_path, sr, duration):
+def save_partial_svg(harmonic, output_path, sr, duration, scale='log'):
     dwg = svgwrite.Drawing(output_path, profile='tiny')
 
     # Define SVG dimensions and scaling
@@ -119,6 +125,8 @@ def save_partial_svg(harmonic, output_path, sr, duration):
     # Scaling factors
     time_scale = svg_width / duration
     freq_scale = svg_height / (sr / 2) # Max frequency is Nyquist
+    min_freq_log = np.log10(20) # min audible frequency
+    max_freq_log = np.log10(sr/2)
 
     if not harmonic:
         dwg.save()
@@ -141,10 +149,14 @@ def save_partial_svg(harmonic, output_path, sr, duration):
 
         # Convert to SVG coordinates
         x1 = t1 * time_scale
-        y1 = svg_height - (f1 * freq_scale) # SVG Y-axis is inverted
-
         x2 = t2 * time_scale
-        y2 = svg_height - (f2 * freq_scale)
+
+        if scale == 'log':
+            y1 = svg_height - ((np.log10(max(f1, 20)) - min_freq_log) / (max_freq_log - min_freq_log)) * svg_height
+            y2 = svg_height - ((np.log10(max(f2, 20)) - min_freq_log) / (max_freq_log - min_freq_log)) * svg_height
+        else:
+            y1 = svg_height - (f1 * freq_scale)
+            y2 = svg_height - (f2 * freq_scale)
 
         avg_amp_db = (a1_db + a2_db) / 2
         avg_linear_amp = db_to_linear(avg_amp_db)
