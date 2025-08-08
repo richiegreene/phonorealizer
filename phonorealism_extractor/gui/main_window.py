@@ -118,15 +118,23 @@ def create_main_window():
         dpg.set_value("status_text", f"Exported partials to: {output_path}")
 
     def export_wav(sender, app_data, user_data):
-        partials, file_path, sr, duration = user_data
+        dpg.show_item("wav_export_modal")
+        dpg.set_item_user_data("export_wav_button_modal", user_data)
+
+    def do_export_wav(sender, app_data, user_data):
+        original_user_data = dpg.get_item_user_data("export_wav_button_modal")
+        partials, file_path, sr, duration = original_user_data
+        playback_speed = dpg.get_value("playback_speed_input")
+
         if not file_path:
             dpg.set_value("status_text", "Please analyze a file first before synthesizing.")
+            dpg.hide_item("wav_export_modal")
             return
         
         # Export full waveform
         base, ext = os.path.splitext(file_path)
         output_path = base + "_render" + ext
-        synthesize_from_partials(partials, sr, output_path, duration)
+        synthesize_from_partials(partials, sr, output_path, duration, playback_speed=playback_speed)
         dpg.set_value("status_text", f"Synthesized full audio to: {output_path}")
 
         # Export partial waveforms
@@ -139,10 +147,11 @@ def create_main_window():
             harmonic_tag = f"harmonic_line_{harmonic_number}"
             if dpg.does_item_exist(harmonic_tag) and dpg.is_item_shown(harmonic_tag):
                 output_path = os.path.join(output_dir, f"harmonic_{harmonic_number}.wav")
-                synthesize_from_partials([harmonic], sr, output_path, duration)
+                synthesize_from_partials([harmonic], sr, output_path, duration, playback_speed=playback_speed)
                 exported_count += 1
         
         dpg.set_value("status_text", f"Synthesized {exported_count} selected harmonics to: {output_dir}")
+        dpg.hide_item("wav_export_modal")
 
     def export_log_svg(sender, app_data, user_data):
         dpg.show_item("svg_export_modal")
@@ -247,6 +256,12 @@ def create_main_window():
         with dpg.group(horizontal=True):
             dpg.add_button(label="Export", callback=do_export_svg, tag="export_svg_button")
             dpg.add_button(label="Cancel", callback=lambda: dpg.hide_item("svg_export_modal"))
+
+    with dpg.window(label="WAV Export Options", modal=True, show=False, tag="wav_export_modal", width=300):
+        dpg.add_input_float(label="Rate", tag="playback_speed_input", default_value=1.0, step=0.1)
+        with dpg.group(horizontal=True):
+            dpg.add_button(label="Export", callback=do_export_wav, tag="export_wav_button_modal")
+            dpg.add_button(label="Cancel", callback=lambda: dpg.hide_item("wav_export_modal"))
 
     dpg.create_viewport(title='Phonorealism Analysis Tool', width=800, height=600)
     dpg.setup_dearpygui()
