@@ -48,7 +48,7 @@ def save_harmonic_to_wav(harmonic, sr, output_path):
     harmonic_wave /= np.max(np.abs(harmonic_wave))
     sf.write(output_path, harmonic_wave, sr)
 
-def save_full_svg(partials, output_path, sr, duration, scale='log', svg_width=1000, svg_height=500):
+def save_full_svg(partials, output_path, sr, duration, scale='log', svg_width=1000, svg_height=500, gain=1.0):
     dwg = svgwrite.Drawing(output_path, profile='tiny')
 
     # Define SVG dimensions and scaling
@@ -118,6 +118,7 @@ def save_full_svg(partials, output_path, sr, duration, scale='log', svg_width=10
             else:
                 normalized_amp = 0
             stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
+            stroke_width *= gain
             stroke_widths.append(stroke_width)
 
         # --- 3. Calculate normals at each point ---
@@ -185,7 +186,7 @@ def save_full_svg(partials, output_path, sr, duration, scale='log', svg_width=10
 
     dwg.save()
 
-def save_partial_svg(harmonic, output_path, sr, duration, scale='log', svg_width=1000, svg_height=500):
+def save_partial_svg(harmonic, output_path, sr, duration, scale='log', svg_width=1000, svg_height=500, gain=1.0):
     dwg = svgwrite.Drawing(output_path, profile='tiny')
 
     # Define SVG dimensions and scaling
@@ -255,6 +256,7 @@ def save_partial_svg(harmonic, output_path, sr, duration, scale='log', svg_width
         else:
             normalized_amp = 0
         stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
+        stroke_width *= gain
         stroke_widths.append(stroke_width)
 
     # --- 3. Calculate normals at each point ---
@@ -322,7 +324,7 @@ def save_partial_svg(harmonic, output_path, sr, duration, scale='log', svg_width
 
     dwg.save()
 
-def save_waveform_svg(audio_data, output_path, sr, svg_width=1000, svg_height=500):
+def save_waveform_svg(audio_data, output_path, sr, svg_width=1000, svg_height=500, gain=1.0, max_points=5000):
     """
     Saves an audio waveform to an SVG file.
 
@@ -345,7 +347,7 @@ def save_waveform_svg(audio_data, output_path, sr, svg_width=1000, svg_height=50
     path_d = f"M 0,{svg_height / 2} "
     for i, sample in enumerate(audio_data):
         x = i * time_scale
-        y = (svg_height / 2) - (sample * amp_scale)
+        y = (svg_height / 2) - (sample * amp_scale * gain)
         path_d += f"L {x},{y} "
 
     # --- 3. Add path to drawing ---
