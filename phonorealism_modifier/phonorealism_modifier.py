@@ -1,19 +1,22 @@
 """
 phonorealism_modifier.py
 
-Phonorealism Modifier: Interactive plot with Pan, Box, Lasso tools and batch editing.
+Phonorealism Modifier: Interactive plot with selection, smoothing, Dodge/Burn amplitude, 
+and live preview circle for tools.
 """
 
 import sys
+from functools import partial
 import numpy as np
 import pandas as pd
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QToolBar,
     QMessageBox, QDialog, QFormLayout, QLineEdit, QPushButton, QHBoxLayout
 )
-from PySide6.QtGui import QAction, QPainter, QColor
-from PySide6.QtCore import Qt, QRectF, QPointF
+from PySide6.QtGui import QAction
+from PySide6.QtCore import Qt, QPointF, QRectF
 import pyqtgraph as pg
+from matplotlib.path import Path
 
 class HarmonicData:
     def __init__(self):
@@ -62,26 +65,25 @@ class HarmonicsPlot(pg.PlotWidget):
         self.showGrid(x=True, y=True)
         self.setLabel('bottom', 'Time', units='s')
         self.setLabel('left', 'Frequency', units='Hz')
+
         self.harmonic_curves = []
         self.scatter_items = []
         self.data = None
         self.selected_points = []
 
-        # Tool management: 'pan', 'box', 'lasso'
-        self.current_tool = 'pan'
-        self.box_roi = None
-        self.lasso_polygon = []
-        self.temp_line = None
+        # Tool modes
+        self.tool_mode = 'view'  # 'view', 'box', 'lasso', 'smooth', 'dodge'
+        self._dragging = False
+        self._drag_start = None
+        self._lasso_points = []
 
-        self.setMouseEnabled(x=True, y=True)
+        # Preview circle for Smooth/Dodge
+        self.preview_circle = pg.ScatterPlotItem(size=20, pen=pg.mkPen('r', width=2), brush=pg.mkBrush(0,0,0,0))
+        self.addItem(self.preview_circle)
+
+        # Disable default right/left drag
+        self.getViewBox().setMouseEnabled(x=True, y=True)
         self.setMenuEnabled(False)
-        self.setAspectLocked(False)
-        self.setLimits(xMin=0, yMin=0)
-        self.enableAutoRange()
-
-        self._tooltip = pg.TextItem(anchor=(0,1), border='k', fill=(255,255,255,200))
-        self.addItem(self._tooltip)
-        self._tooltip.hide()
 
     def clear_plot(self):
         for item in self.harmonic_curves + self.scatter_items:
@@ -89,8 +91,6 @@ class HarmonicsPlot(pg.PlotWidget):
         self.harmonic_curves.clear()
         self.scatter_items.clear()
         self.selected_points.clear()
-        self.box_roi = None
-        self.lasso_polygon.clear()
 
     def plot_harmonics(self, harmonic_data: HarmonicData):
         self.clear_plot()
@@ -101,7 +101,7 @@ class HarmonicsPlot(pg.PlotWidget):
             freqs = group['frequency'].values
             amps = group['amplitude'].values
             norm_amps = (amps - amps.min()) / (amps.max() - amps.min() + 1e-9)
-            color = cmap.map(norm_amps, mode='qcolor')
+            color = [cmap.map(a, mode='qcolor') for a in norm_amps]
             curve = pg.PlotDataItem(times, freqs, pen=pg.mkPen(color=color[-1], width=2))
             self.addItem(curve)
             self.harmonic_curves.append(curve)
@@ -110,108 +110,104 @@ class HarmonicsPlot(pg.PlotWidget):
             self.addItem(scatter)
             self.scatter_items.append(scatter)
 
-    def set_tool(self, tool_name):
-        """Switch tool mode: 'pan', 'box', 'lasso'"""
-        self.current_tool = tool_name
-        if tool_name == 'pan':
-            self.setMouseEnabled(x=True, y=True)
-        else:
-            self.setMouseEnabled(x=False, y=False)
-        self.clear_temp_selection()
-
-    # -------------------- Selection Logic -------------------- #
-    def mousePressEvent(self, ev):
-        pos = ev.position() if hasattr(ev, 'position') else ev.pos()
-        if self.current_tool == 'box':
-            self.box_start = self.plotItem.vb.mapSceneToView(pos)
-            self.box_roi = pg.QtGui.QGraphicsRectItem()
-            self.box_roi.setPen(pg.mkPen('r', width=2))
-            self.plotItem.addItem(self.box_roi)
-        elif self.current_tool == 'lasso':
-            self.lasso_polygon = [self.plotItem.vb.mapSceneToView(pos)]
-            self.temp_line = pg.PlotDataItem(pen=pg.mkPen('r', width=2))
-            self.addItem(self.temp_line)
-        else:
-            super().mousePressEvent(ev)
-
-    def mouseMoveEvent(self, ev):
-        pos = ev.position() if hasattr(ev, 'position') else ev.pos()
-        if self.current_tool == 'box' and self.box_roi:
-            current_pos = self.plotItem.vb.mapSceneToView(pos)
-            x0 = min(self.box_start.x(), current_pos.x())
-            y0 = min(self.box_start.y(), current_pos.y())
-            w = abs(self.box_start.x() - current_pos.x())
-            h = abs(self.box_start.y() - current_pos.y())
-            self.box_roi.setRect(QRectF(x0, y0, w, h))
-        elif self.current_tool == 'lasso' and self.temp_line:
-            point = self.plotItem.vb.mapSceneToView(pos)
-            self.lasso_polygon.append(point)
-            xs = [p.x() for p in self.lasso_polygon]
-            ys = [p.y() for p in self.lasso_polygon]
-            self.temp_line.setData(xs, ys)
-        else:
-            super().mouseMoveEvent(ev)
-
-    def mouseReleaseEvent(self, ev):
-        if self.current_tool == 'box' and self.box_roi:
-            rect = self.box_roi.rect()
-            self.select_points_box(rect)
-            self.plotItem.removeItem(self.box_roi)
-            self.box_roi = None
-        elif self.current_tool == 'lasso' and self.temp_line:
-            self.select_points_lasso(self.lasso_polygon)
-            self.removeItem(self.temp_line)
-            self.temp_line = None
-            self.lasso_polygon.clear()
-        else:
-            super().mouseReleaseEvent(ev)
-
-    def clear_temp_selection(self):
-        self.selected_points.clear()
-
-    def select_points_box(self, rect):
+    # -------------------- Selection Tools -------------------- #
+    def box_select(self, rect: QRectF):
         self.selected_points.clear()
         for scatter in self.scatter_items:
             for spot in scatter.points():
-                pos = spot.pos()
-                if rect.contains(QPointF(pos.x(), pos.y())):
+                if rect.contains(spot.pos()):
                     self.selected_points.append(spot)
-        self.highlight_selected()
+        self.update_point_highlight()
 
-    def select_points_lasso(self, polygon):
-        from matplotlib.path import Path
+    def lasso_select(self, polygon):
         poly_path = Path([(p.x(), p.y()) for p in polygon])
         self.selected_points.clear()
         for scatter in self.scatter_items:
             for spot in scatter.points():
                 if poly_path.contains_point((spot.pos().x(), spot.pos().y())):
                     self.selected_points.append(spot)
-        self.highlight_selected()
+        self.update_point_highlight()
 
-    def highlight_selected(self):
+    def update_point_highlight(self):
         for scatter in self.scatter_items:
             for spot in scatter.points():
+                color = spot.brush().color()
                 if spot in self.selected_points:
-                    spot.setBrush(pg.mkBrush(QColor(255,0,0)))
+                    color = color.lighter(150)
                 else:
-                    data = spot.data()
-                    spot.setBrush(pg.mkBrush('b'))
+                    color = color.darker(100)
+                spot.setBrush(color)
 
-    def update_selected_points(self, edits):
+    # -------------------- Mouse Events -------------------- #
+    def mousePressEvent(self, event):
+        pos = self.plotItem.vb.mapSceneToView(event.position())
+        if event.button() == Qt.LeftButton:
+            if self.tool_mode in ['box', 'lasso']:
+                self._dragging = True
+                self._drag_start = pos
+                if self.tool_mode == 'lasso':
+                    self._lasso_points = [pos]
+            elif self.tool_mode in ['smooth', 'dodge']:
+                self._dragging = True
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        pos = self.plotItem.vb.mapSceneToView(event.position())
+        # Update preview circle
+        if self.tool_mode in ['smooth', 'dodge']:
+            radius = self.pixel_to_plot_radius(50)  # 50 pixels
+            self.preview_circle.setData([pos.x()], [pos.y()])
+            self.preview_circle.setSize(radius*1000)
+        if self._dragging:
+            if self.tool_mode == 'box':
+                rect = QRectF(self._drag_start, pos)
+                self.box_select(rect)
+            elif self.tool_mode == 'lasso':
+                self._lasso_points.append(pos)
+                self.lasso_select(self._lasso_points)
+            elif self.tool_mode == 'smooth':
+                self.apply_smooth(pos)
+            elif self.tool_mode == 'dodge':
+                self.apply_dodge(pos)
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._dragging = False
+            self._drag_start = None
+            self._lasso_points = []
+            self.preview_circle.setData([], [])
+        super().mouseReleaseEvent(event)
+
+    def pixel_to_plot_radius(self, pixel_radius):
+        vb = self.plotItem.vb
+        p1 = vb.mapSceneToView(QPointF(0,0))
+        p2 = vb.mapSceneToView(QPointF(pixel_radius,0))
+        return abs(p2.x()-p1.x())
+
+    # -------------------- Editing Tools -------------------- #
+    def apply_smooth(self, pos, radius=0.05):
+        radius = self.pixel_to_plot_radius(50)
         for spot in self.selected_points:
-            data = spot.data()
-            idx = (self.data.df['time'] == float(data['time'])) & \
-                  (self.data.df['frequency'] == float(data['frequency'])) & \
-                  (self.data.df['amplitude'] == float(data['amplitude'])) & \
-                  (self.data.df['harmonic_index'] == int(data['harmonic_index']))
-            for key in ['time', 'frequency', 'amplitude']:
-                val = edits.get(key)
-                if val.strip() != '':
-                    self.data.df.loc[idx, key] = float(val)
+            p = spot.pos()
+            dist = np.hypot(p.x()-pos.x(), p.y()-pos.y())
+            if dist < radius:
+                mask = (self.data.df['time'] - p.x()).abs() < 1e-9
+                self.data.df.loc[mask, 'frequency'] = (self.data.df.loc[mask, 'frequency'] + pos.y()) / 2
         self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
         self.plot_harmonics(self.data)
 
-# -------------------- Main Window -------------------- #
+    def apply_dodge(self, pos, radius=0.05, increment=0.1):
+        radius = self.pixel_to_plot_radius(50)
+        for spot in self.selected_points:
+            p = spot.pos()
+            dist = np.hypot(p.x()-pos.x(), p.y()-pos.y())
+            if dist < radius:
+                mask = (self.data.df['time'] - p.x()).abs() < 1e-9
+                self.data.df.loc[mask, 'amplitude'] += increment
+        self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
+        self.plot_harmonics(self.data)
+
 class MainWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -220,40 +216,43 @@ class MainWindow(QMainWindow):
         self.data = HarmonicData()
         self.plot = HarmonicsPlot()
         self._init_ui()
-
-    def _init_ui(self):
-        toolbar = QToolBar("Tools")
-        self.addToolBar(toolbar)
-
-        open_action = QAction("Open CSV", self)
-        open_action.triggered.connect(self.open_csv)
-        toolbar.addAction(open_action)
-
-        save_action = QAction("Save CSV", self)
-        save_action.triggered.connect(self.save_csv)
-        toolbar.addAction(save_action)
-
-        pan_action = QAction("Pan/Zoom", self)
-        pan_action.triggered.connect(lambda: self.plot.set_tool('pan'))
-        toolbar.addAction(pan_action)
-
-        box_action = QAction("Box Select", self)
-        box_action.triggered.connect(lambda: self.plot.set_tool('box'))
-        toolbar.addAction(box_action)
-
-        lasso_action = QAction("Lasso Select", self)
-        lasso_action.triggered.connect(lambda: self.plot.set_tool('lasso'))
-        toolbar.addAction(lasso_action)
-
-        batch_edit_action = QAction("Edit Selected", self)
-        batch_edit_action.triggered.connect(self.batch_edit)
-        toolbar.addAction(batch_edit_action)
-
+        # Central widget
         central = QWidget()
         layout = QVBoxLayout()
         layout.addWidget(self.plot)
         central.setLayout(layout)
         self.setCentralWidget(central)
+
+    def _init_ui(self):
+        self.toolbar = QToolBar("Main Toolbar")
+        self.addToolBar(self.toolbar)
+
+        # File actions
+        open_action = QAction("Open CSV", self)
+        open_action.triggered.connect(self.open_csv)
+        self.toolbar.addAction(open_action)
+
+        save_action = QAction("Save CSV", self)
+        save_action.triggered.connect(self.save_csv)
+        self.toolbar.addAction(save_action)
+
+        # Tool buttons
+        self.tool_actions = {}
+        for tool in ['view', 'box', 'lasso', 'smooth', 'dodge']:
+            act = QAction(tool.capitalize(), self)
+            act.setCheckable(True)
+            act.triggered.connect(partial(self.set_tool, tool))
+            self.toolbar.addAction(act)
+            self.tool_actions[tool] = act
+
+        batch_edit_action = QAction("Edit Selected", self)
+        batch_edit_action.triggered.connect(self.batch_edit)
+        self.toolbar.addAction(batch_edit_action)
+
+    def set_tool(self, tool):
+        self.plot.tool_mode = tool
+        for t, a in self.tool_actions.items():
+            a.setChecked(t == tool)
 
     def open_csv(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open Harmonic CSV", "", "CSV Files (*.csv)")
@@ -286,7 +285,17 @@ class MainWindow(QMainWindow):
         dlg = BatchEditDialog(self)
         if dlg.exec() == QDialog.Accepted:
             edits = dlg.get_data()
-            self.plot.update_selected_points(edits)
+            for spot in self.plot.selected_points:
+                data = spot.data()
+                idx = (self.data.df['time'] == float(data['time'])) & \
+                      (self.data.df['frequency'] == float(data['frequency'])) & \
+                      (self.data.df['amplitude'] == float(data['amplitude'])) & \
+                      (self.data.df['harmonic_index'] == int(data['harmonic_index']))
+                for key, val in edits.items():
+                    if val.strip() != '':
+                        self.data.df.loc[idx, key] = float(val)
+            self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
+            self.plot.plot_harmonics(self.data)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
