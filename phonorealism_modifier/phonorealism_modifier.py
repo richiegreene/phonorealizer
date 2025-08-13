@@ -58,6 +58,36 @@ class BatchEditDialog(QDialog):
     def get_data(self):
         return {k: self.inputs[k].text() for k in self.inputs}
 
+class SpnAxis(pg.AxisItem):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def tickStrings(self, values, scale, spacing):
+        strings = []
+        for v in values:
+            if v <= 0:
+                strings.append("")
+                continue
+            spn_string = self.freq_to_spn(v)
+            strings.append(spn_string)
+        return strings
+
+    def freq_to_spn(self, freq):
+        if freq <= 0:
+            return ""
+        
+        midi_note_float = 69 + 12 * np.log2(freq / 440.0)
+        midi_note = int(round(midi_note_float))
+        cents_deviation = int(round((midi_note_float - midi_note) * 100))
+        
+        octave = (midi_note // 12) - 1
+        note_index = midi_note % 12
+        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        note_name = note_names[note_index]
+        
+        sign = "+" if cents_deviation >= 0 else ""
+        return f"{note_name}{octave} {sign}{cents_deviation}c"
+
 class HarmonicsPlot(pg.PlotWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -82,8 +112,11 @@ class HarmonicsPlot(pg.PlotWidget):
         self.addItem(self.preview_circle)
 
         # Disable default right/left drag
-        self.getViewBox().setMouseEnabled(x=True, y=True)
+        self.getViewBox().setMouseEnabled(x=False, y=False)
         self.setMenuEnabled(False)
+        self.spn_axis_generator = SpnAxis(orientation='left')
+        self.default_axis_generator = pg.AxisItem(orientation='left')
+        self.getAxis('left').setLogMode(False)
 
     def clear_plot(self):
         for item in self.harmonic_curves + self.scatter_items:
@@ -99,6 +132,7 @@ class HarmonicsPlot(pg.PlotWidget):
         for idx, group in harmonic_data.grouped.items():
             times = group['time'].values
             freqs = group['frequency'].values
+            freqs[freqs <= 0] = 1  # Avoid log(0) issues
             amps = group['amplitude'].values
             norm_amps = (amps - amps.min()) / (amps.max() - amps.min() + 1e-9)
             color = [cmap.map(a, mode='qcolor') for a in norm_amps]
@@ -109,8 +143,9 @@ class HarmonicsPlot(pg.PlotWidget):
                                          data=group.to_dict('records'))
             self.addItem(scatter)
             self.scatter_items.append(scatter)
+        self.autoRange()
 
-    # -------------------- Selection Tools -------------------- #
+    # -------------------- Selection Tools --------------------
     def box_select(self, rect: QRectF):
         self.selected_points.clear()
         for scatter in self.scatter_items:
@@ -131,14 +166,23 @@ class HarmonicsPlot(pg.PlotWidget):
     def update_point_highlight(self):
         for scatter in self.scatter_items:
             for spot in scatter.points():
-                color = spot.brush().color()
                 if spot in self.selected_points:
-                    color = color.lighter(150)
+                    spot.setPen(pg.mkPen('r', width=2))
                 else:
-                    color = color.darker(100)
-                spot.setBrush(color)
+                    spot.setPen(None)
 
-    # -------------------- Mouse Events -------------------- #
+    def set_y_scale(self, log_scale):
+        axis = self.getAxis('left')
+        axis.setLogMode(log_scale)
+        if log_scale:
+            axis.setLabel('Pitch', units='SPN')
+            axis.tickStrings = None # Use default ticks for now
+        else:
+            axis.setLabel('Frequency', units='Hz')
+            axis.tickStrings = None
+        self.autoRange()
+
+    # -------------------- Mouse Events --------------------
     def mousePressEvent(self, event):
         pos = self.plotItem.vb.mapSceneToView(event.position())
         if event.button() == Qt.LeftButton:
@@ -185,28 +229,40 @@ class HarmonicsPlot(pg.PlotWidget):
         p2 = vb.mapSceneToView(QPointF(pixel_radius,0))
         return abs(p2.x()-p1.x())
 
-    # -------------------- Editing Tools -------------------- #
+    # -------------------- Editing Tools --------------------
     def apply_smooth(self, pos, radius=0.05):
         radius = self.pixel_to_plot_radius(50)
-        for spot in self.selected_points:
-            p = spot.pos()
-            dist = np.hypot(p.x()-pos.x(), p.y()-pos.y())
-            if dist < radius:
-                mask = (self.data.df['time'] - p.x()).abs() < 1e-9
-                self.data.df.loc[mask, 'frequency'] = (self.data.df.loc[mask, 'frequency'] + pos.y()) / 2
-        self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
-        self.plot_harmonics(self.data)
+        modified = False
+        for scatter in self.scatter_items:
+            for spot in scatter.points():
+                p = spot.pos()
+                dist = np.hypot(p.x() - pos.x(), p.y() - pos.y())
+                if dist < radius:
+                    data = spot.data()
+                    if data:
+                        mask = (self.data.df['time'] == data['time']) & (self.data.df['harmonic_index'] == data['harmonic_index'])
+                        self.data.df.loc[mask, 'frequency'] = (self.data.df.loc[mask, 'frequency'] + pos.y()) / 2
+                        modified = True
+        if modified:
+            self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
+            self.plot_harmonics(self.data)
 
     def apply_dodge(self, pos, radius=0.05, increment=0.1):
         radius = self.pixel_to_plot_radius(50)
-        for spot in self.selected_points:
-            p = spot.pos()
-            dist = np.hypot(p.x()-pos.x(), p.y()-pos.y())
-            if dist < radius:
-                mask = (self.data.df['time'] - p.x()).abs() < 1e-9
-                self.data.df.loc[mask, 'amplitude'] += increment
-        self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
-        self.plot_harmonics(self.data)
+        modified = False
+        for scatter in self.scatter_items:
+            for spot in scatter.points():
+                p = spot.pos()
+                dist = np.hypot(p.x() - pos.x(), p.y() - pos.y())
+                if dist < radius:
+                    data = spot.data()
+                    if data:
+                        mask = (self.data.df['time'] == data['time']) & (self.data.df['harmonic_index'] == data['harmonic_index'])
+                        self.data.df.loc[mask, 'amplitude'] += increment
+                        modified = True
+        if modified:
+            self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
+            self.plot_harmonics(self.data)
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -249,10 +305,31 @@ class MainWindow(QMainWindow):
         batch_edit_action.triggered.connect(self.batch_edit)
         self.toolbar.addAction(batch_edit_action)
 
+        self.toolbar.addSeparator()
+        self.scale_action = QAction("Linear Scale", self)
+        self.scale_action.setCheckable(True)
+        self.scale_action.setChecked(False)
+        self.scale_action.triggered.connect(self.toggle_scale)
+        self.toolbar.addAction(self.scale_action)
+
+        auto_range_action = QAction("Auto Range", self)
+        auto_range_action.triggered.connect(self.plot.autoRange)
+        self.toolbar.addAction(auto_range_action)
+
     def set_tool(self, tool):
         self.plot.tool_mode = tool
+        is_view_mode = tool == 'view'
+        self.plot.getViewBox().setMouseEnabled(x=is_view_mode, y=is_view_mode)
         for t, a in self.tool_actions.items():
             a.setChecked(t == tool)
+
+    def toggle_scale(self):
+        is_log_scale = self.scale_action.isChecked()
+        self.plot.set_y_scale(is_log_scale)
+        if is_log_scale:
+            self.scale_action.setText("Log Scale")
+        else:
+            self.scale_action.setText("Linear Scale")
 
     def open_csv(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open Harmonic CSV", "", "CSV Files (*.csv)")
