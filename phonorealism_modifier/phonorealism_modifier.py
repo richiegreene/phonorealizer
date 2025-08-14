@@ -139,16 +139,25 @@ class HarmonicsPlot(pg.PlotWidget):
                 else:
                     spot.setPen(None)
 
-    def set_y_scale(self, log_scale):
-        axis = self.getAxis('left')
-        axis.setLogMode(log_scale)
-        if log_scale:
-            axis.setLabel('Pitch', units='SPN')
-            axis.tickStrings = None # Use default ticks for now
+    def _freq_to_spn_label(self, freq):
+        if freq <= 0:
+            return ""
+
+        midi_note_float = 69 + 12 * np.log2(freq / 440.0)
+        midi_note = int(round(midi_note_float))
+        
+        cents_deviation = int(round((midi_note_float - midi_note) * 100))
+
+        octave = (midi_note // 12) - 1
+        note_index = midi_note % 12
+        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        note_name = note_names[note_index]
+
+        if note_name == "C":
+            return f"C<sub>{octave}</sub>"
         else:
-            axis.setLabel('Frequency', units='Hz')
-            axis.tickStrings = None
-        self.autoRange()
+            sign = "+" if cents_deviation >= 0 else ""
+            return f"{note_name}{octave} {sign}{cents_deviation}c"
 
     # -------------------- Mouse Events --------------------
     def mousePressEvent(self, event):
@@ -273,31 +282,12 @@ class MainWindow(QMainWindow):
         batch_edit_action.triggered.connect(self.batch_edit)
         self.toolbar.addAction(batch_edit_action)
 
-        self.toolbar.addSeparator()
-        self.scale_action = QAction("Linear Scale", self)
-        self.scale_action.setCheckable(True)
-        self.scale_action.setChecked(False)
-        self.scale_action.triggered.connect(self.toggle_scale)
-        self.toolbar.addAction(self.scale_action)
-
-        auto_range_action = QAction("Auto Range", self)
-        auto_range_action.triggered.connect(self.plot.autoRange)
-        self.toolbar.addAction(auto_range_action)
-
     def set_tool(self, tool):
         self.plot.tool_mode = tool
         is_view_mode = tool == 'view'
         self.plot.getViewBox().setMouseEnabled(x=is_view_mode, y=is_view_mode)
         for t, a in self.tool_actions.items():
             a.setChecked(t == tool)
-
-    def toggle_scale(self):
-        is_log_scale = self.scale_action.isChecked()
-        self.plot.set_y_scale(is_log_scale)
-        if is_log_scale:
-            self.scale_action.setText("Log Scale")
-        else:
-            self.scale_action.setText("Linear Scale")
 
     def open_csv(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open Harmonic CSV", "", "CSV Files (*.csv)")
