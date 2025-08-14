@@ -58,36 +58,6 @@ class BatchEditDialog(QDialog):
     def get_data(self):
         return {k: self.inputs[k].text() for k in self.inputs}
 
-class SpnAxis(pg.AxisItem):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-    def tickStrings(self, values, scale, spacing):
-        strings = []
-        for v in values:
-            if v <= 0:
-                strings.append("")
-                continue
-            spn_string = self.freq_to_spn(v)
-            strings.append(spn_string)
-        return strings
-
-    def freq_to_spn(self, freq):
-        if freq <= 0:
-            return ""
-        
-        midi_note_float = 69 + 12 * np.log2(freq / 440.0)
-        midi_note = int(round(midi_note_float))
-        cents_deviation = int(round((midi_note_float - midi_note) * 100))
-        
-        octave = (midi_note // 12) - 1
-        note_index = midi_note % 12
-        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
-        note_name = note_names[note_index]
-        
-        sign = "+" if cents_deviation >= 0 else ""
-        return f"{note_name}{octave} {sign}{cents_deviation}c"
-
 class HarmonicsPlot(pg.PlotWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -114,8 +84,6 @@ class HarmonicsPlot(pg.PlotWidget):
         # Disable default right/left drag
         self.getViewBox().setMouseEnabled(x=False, y=False)
         self.setMenuEnabled(False)
-        self.spn_axis_generator = SpnAxis(orientation='left')
-        self.default_axis_generator = pg.AxisItem(orientation='left')
         self.getAxis('left').setLogMode(False)
 
     def clear_plot(self):
