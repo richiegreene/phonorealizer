@@ -242,7 +242,7 @@ class HarmonicsPlot(pg.PlotWidget):
             self.tool_timer.stop()
             return
         
-        pos = self.mapSceneToView(self.mapFromGlobal(pg.QtGui.QCursor.pos()))
+        pos = self.plotItem.vb.mapSceneToView(self.mapFromGlobal(pg.QtGui.QCursor.pos()))
         
         if self.tool_mode == 'dodge':
             self._update_dodge_visuals(pos)
@@ -251,7 +251,7 @@ class HarmonicsPlot(pg.PlotWidget):
 
     def _update_dodge_visuals(self, pos):
         radius = self.pixel_to_plot_radius(self.tool_radius)
-        increment = 0.5
+        increment = 311 # Increased to an extreme value for testing
 
         for scatter in self.scatter_items:
             for spot in scatter.points():
