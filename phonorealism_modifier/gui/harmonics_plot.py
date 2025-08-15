@@ -8,7 +8,7 @@ class HarmonicsPlot(pg.PlotWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setBackground('w')
+        self.setBackground('k')
         self.showGrid(x=True, y=True)
         self.setLabel('bottom', 'Time', units='s')
         self.setLabel('left', 'Frequency', units='Hz')
