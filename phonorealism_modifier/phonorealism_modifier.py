@@ -85,6 +85,11 @@ class HarmonicsPlot(pg.PlotWidget):
         self.addItem(self.selection_rect)
         self.selection_rect.setVisible(False)
 
+        # Visual lasso path
+        self.lasso_path = pg.PlotDataItem(pen=pg.mkPen('r', width=1, style=Qt.DashLine))
+        self.addItem(self.lasso_path)
+        self.lasso_path.setVisible(False)
+
         # Preview circle for Smooth/Dodge
         self.preview_circle = pg.ScatterPlotItem(size=20, pen=pg.mkPen('r', width=2), brush=pg.mkBrush(0,0,0,0))
         self.addItem(self.preview_circle)
@@ -180,6 +185,8 @@ class HarmonicsPlot(pg.PlotWidget):
                 self._dragging = True
                 self._drag_start = pos
                 self._lasso_points = [pos]
+                self.lasso_path.setData([p.x() for p in self._lasso_points], [p.y() for p in self._lasso_points])
+                self.lasso_path.setVisible(True)
             elif self.tool_mode in ['smooth', 'dodge']:
                 self._dragging = True
         super().mousePressEvent(event)
@@ -197,7 +204,7 @@ class HarmonicsPlot(pg.PlotWidget):
                 self.selection_rect.setRect(rect)
             elif self.tool_mode == 'lasso':
                 self._lasso_points.append(pos)
-                self.lasso_select(self._lasso_points)
+                self.lasso_path.setData([p.x() for p in self._lasso_points], [p.y() for p in self._lasso_points])
             elif self.tool_mode == 'smooth':
                 self.apply_smooth(pos)
             elif self.tool_mode == 'dodge':
@@ -210,6 +217,9 @@ class HarmonicsPlot(pg.PlotWidget):
                 rect = QRectF(self._drag_start, self.plotItem.vb.mapSceneToView(event.position())).normalized()
                 self.box_select(rect)
                 self.selection_rect.setVisible(False)
+            elif self.tool_mode == 'lasso' and self._dragging:
+                self.lasso_select(self._lasso_points)
+                self.lasso_path.setVisible(False)
 
             self._dragging = False
             self._drag_start = None
