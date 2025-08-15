@@ -15,9 +15,18 @@ from PySide6.QtWidgets import (
     QMessageBox, QDialog, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QCheckBox
 )
 from PySide6.QtGui import QAction
-from PySide6.QtCore import Qt, QPointF, QRectF, QTimer
+from PySide6.QtCore import Qt, QPointF, QRectF, QTimer, QUrl, QTemporaryFile
+from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 import pyqtgraph as pg
 from matplotlib.path import Path
+import os
+import tempfile
+
+# Adjust sys.path to import from phonorealism_extractor
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'phonorealism_extractor'))
+from core.synthesizer import synthesize_from_partials
+
+    
 
 class HarmonicData:
     def __init__(self):
@@ -361,6 +370,10 @@ class MainWindow(QMainWindow):
         save_action.triggered.connect(self.save_csv)
         self.toolbar.addAction(save_action)
 
+        play_action = QAction("Play Audio", self)
+        play_action.triggered.connect(self.play_audio)
+        self.toolbar.addAction(play_action)
+
         # Tool buttons
         self.tool_actions = {}
         for tool in ['view', 'box', 'lasso', 'smooth', 'dodge']:
@@ -404,6 +417,60 @@ class MainWindow(QMainWindow):
             QMessageBox.information(self, "Success", f"File saved to:\n{path}")
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save file:\n{e}")
+
+    def play_audio(self):
+        if self.data.df is None or self.data.df.empty:
+            QMessageBox.warning(self, "No Data", "Please load a CSV file first.")
+            return
+
+        # Prepare data for synthesizer
+        partials_data = []
+        for idx in self.data.grouped:
+            group = self.data.grouped[idx]
+            # Ensure the order of columns matches what synthesize_from_partials expects:
+            # (time, frequency, amplitude)
+            partial_list = group[['time', 'frequency', 'amplitude']].values.tolist()
+            partials_data.append(partial_list)
+
+        sr = 44100  # Sample rate
+        duration = self.data.df['time'].max() if not self.data.df.empty else 1.0 # Duration of the audio
+
+        # Create a temporary file for the WAV output
+        temp_wav_file = QTemporaryFile("XXXXXX.wav")
+        if not temp_wav_file.open():
+            QMessageBox.critical(self, "Error", "Could not create temporary file.")
+            return
+        temp_wav_file.setAutoRemove(True) # Ensure the file is removed when closed
+
+        output_path = temp_wav_file.fileName()
+
+        try:
+            synthesize_from_partials(partials_data, sr, output_path, duration)
+            
+            # Play the audio
+            self.audio_output = QAudioOutput()
+            self.media_player = QMediaPlayer()
+            self.media_player.setAudioOutput(self.audio_output)
+            self.media_player.setSource(QUrl.fromLocalFile(output_path))
+            self.audio_output.setVolume(0.5) # Set initial volume
+            self.media_player.play()
+
+            # Connect finished signal to clean up
+            self.media_player.mediaStatusChanged.connect(self._media_status_changed)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to synthesize or play audio: {e}")
+            temp_wav_file.remove() # Ensure cleanup on error
+
+    def _media_status_changed(self, status):
+        if status == QMediaPlayer.MediaStatus.EndOfMedia:
+            # Clean up player and output when media finishes
+            if hasattr(self, 'media_player'):
+                self.media_player.stop()
+                self.media_player.setSource(QUrl()) # Clear source
+                del self.media_player
+            if hasattr(self, 'audio_output'):
+                del self.audio_output
 
     def batch_edit(self):
         if not self.plot.selected_points:
