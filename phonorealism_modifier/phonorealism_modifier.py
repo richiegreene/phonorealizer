@@ -50,7 +50,7 @@ class BatchEditDialog(QDialog):
             self.inputs[key] = le
 
         # Snapping Edits
-        layout.addRow(pg.QtWidgets.QLabel("---" + " Snapping ---")) # Separator
+        layout.addRow(pg.QtWidgets.QLabel("———" + " Snapping ———")) # Separator
         
         self.inputs['ref_pitch'] = QLineEdit("261.6256")
         layout.addRow("Reference Pitch (Hz)", self.inputs['ref_pitch'])
