@@ -77,6 +77,14 @@ class HarmonicsPlot(pg.PlotWidget):
         self._drag_start = None
         self._lasso_points = []
 
+        # Visual selection rectangle
+        self.selection_rect = pg.QtWidgets.QGraphicsRectItem(0, 0, 0, 0)
+        self.selection_rect.setPen(pg.mkPen('k', width=1, style=Qt.DashLine))
+        self.selection_rect.setBrush(pg.mkBrush(100, 100, 255, 50))
+        self.selection_rect.setZValue(100) # Ensure it's drawn on top
+        self.addItem(self.selection_rect)
+        self.selection_rect.setVisible(False)
+
         # Preview circle for Smooth/Dodge
         self.preview_circle = pg.ScatterPlotItem(size=20, pen=pg.mkPen('r', width=2), brush=pg.mkBrush(0,0,0,0))
         self.addItem(self.preview_circle)
@@ -163,11 +171,15 @@ class HarmonicsPlot(pg.PlotWidget):
     def mousePressEvent(self, event):
         pos = self.plotItem.vb.mapSceneToView(event.position())
         if event.button() == Qt.LeftButton:
-            if self.tool_mode in ['box', 'lasso']:
+            if self.tool_mode == 'box':
                 self._dragging = True
                 self._drag_start = pos
-                if self.tool_mode == 'lasso':
-                    self._lasso_points = [pos]
+                self.selection_rect.setRect(QRectF(self._drag_start, self._drag_start))
+                self.selection_rect.setVisible(True)
+            elif self.tool_mode == 'lasso':
+                self._dragging = True
+                self._drag_start = pos
+                self._lasso_points = [pos]
             elif self.tool_mode in ['smooth', 'dodge']:
                 self._dragging = True
         super().mousePressEvent(event)
@@ -181,8 +193,8 @@ class HarmonicsPlot(pg.PlotWidget):
             self.preview_circle.setSize(radius*1000)
         if self._dragging:
             if self.tool_mode == 'box':
-                rect = QRectF(self._drag_start, pos)
-                self.box_select(rect)
+                rect = QRectF(self._drag_start, pos).normalized()
+                self.selection_rect.setRect(rect)
             elif self.tool_mode == 'lasso':
                 self._lasso_points.append(pos)
                 self.lasso_select(self._lasso_points)
@@ -194,6 +206,11 @@ class HarmonicsPlot(pg.PlotWidget):
 
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
+            if self.tool_mode == 'box' and self._dragging:
+                rect = QRectF(self._drag_start, self.plotItem.vb.mapSceneToView(event.position())).normalized()
+                self.box_select(rect)
+                self.selection_rect.setVisible(False)
+
             self._dragging = False
             self._drag_start = None
             self._lasso_points = []

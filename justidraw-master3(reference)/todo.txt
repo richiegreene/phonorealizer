@@ -1,0 +1,58 @@
+[x] make drawing
+[x] line simplification (linear interp)
+[x] grid
+[x] eraser tool
+[x] zooming 
+[x] panning
+[x] playhead
+[x] simple audio engine
+[x] save/load
+[x] pan key
+[x] automerge
+[x] straight line tool
+[x] move tool
+[x] grab tool
+[x] fix grab time order
+[x] weight tool
+[x] rect select tool
+[x] better envelope tool
+[x] fix undo selections
+[x] make selections work with any tool
+[x] duplicate
+[x] undo/redo
+[x] smooth brush
+[x] flatten tool
+[x] resize screen
+[x] bring back the other envelope tool
+[x] toggle playback on mouse press
+[x] toggle audio effects (reverb/delay)
+[x] select whole notes
+[x] reduce clicking on start/end of notes
+[x] join notes
+[x] lasso select
+[x] export audio
+[x] time stretch
+[x] add geometry
+[x] add  better help
+[x] smudge tool
+[x] vibrato
+[x] make envelopes easier to see (fade?)
+[x] change looks / theme (user config / one file)
+[x] change filename
+[x] mouse stabilizer
+[ ] refactor "simplify" and use it in resample
+[ ] toggle log/linear view ?
+[ ] non-12 grids?
+[ ] smarter grid
+[ ] overwrite/edit draw brush (holding alt)
+[ ] set origin of coord system to center
+[ ] save view to file
+
+not currently planned:
+[ ] entropy relax tool
+[ ] copy paste
+[ ] brush icons
+[ ] multiple tracks
+[ ] layer manager
+[ ] add more synths to audio engine
+[ ] song structure tracks, notes
