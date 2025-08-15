@@ -52,7 +52,7 @@ class MainWindow(QMainWindow):
         save_action.triggered.connect(self.save_csv)
         self.toolbar.addAction(save_action)
 
-        self.play_action = QAction("Play Audio", self)
+        self.play_action = QAction("Play", self)
         self.play_action.triggered.connect(lambda: self.audio_player.toggle_playback(self.data, self.play_action))
         self.toolbar.addAction(self.play_action)
 
@@ -121,6 +121,8 @@ class MainWindow(QMainWindow):
                 QApplication.restoreOverrideCursor()
                 self.statusBar().clearMessage()
             self.plot.tool_mode = 'set_marker' if self.set_marker_mode else 'view' # Set plot tool mode
+        elif event.key() == Qt.Key_P:
+            self.audio_player.toggle_playback(self.data, self.play_action)
         else:
             super().keyPressEvent(event)
 

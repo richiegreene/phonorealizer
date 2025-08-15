@@ -36,7 +36,7 @@ class AudioPlayer(QObject):
         if self.temp_wav_file:
             self.temp_wav_file.close() # Close and remove temporary file
             self.temp_wav_file = None
-        play_action_widget.setText("Play Audio")
+        play_action_widget.setText("Play")
 
     def _start_playback(self, harmonic_data, play_action_widget):
         if harmonic_data.df is None or harmonic_data.df.empty:
@@ -69,6 +69,7 @@ class AudioPlayer(QObject):
             self.media_player.setSource(QUrl.fromLocalFile(output_path))
             self.audio_output.setVolume(0.5)
             self.media_player.play()
+            play_action_widget.setText("Pause")
 
             self.media_player.mediaStatusChanged.connect(lambda status: self._media_status_changed(status, play_action_widget))
             self.media_player.positionChanged.connect(self._on_position_changed)
