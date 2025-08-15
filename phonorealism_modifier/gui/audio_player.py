@@ -30,8 +30,10 @@ class AudioPlayer(QObject):
         if self.media_player:
             self.media_player.stop()
             self.media_player.setSource(QUrl()) # Clear source
+            self.media_player.deleteLater() # Schedule for deletion
             self.media_player = None
         if self.audio_output:
+            self.audio_output.deleteLater() # Schedule for deletion
             self.audio_output = None
         if self.temp_wav_file:
             self.temp_wav_file.close() # Close and remove temporary file
