@@ -8,7 +8,7 @@ import pyqtgraph as pg
 class BatchEditDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Batch Edit Selected Points")
+        self.setWindowTitle("Edit Selected")
         layout = QFormLayout(self)
         self.inputs = {}
 
@@ -33,7 +33,13 @@ class BatchEditDialog(QDialog):
         self.inputs['ratios'].setPlaceholderText("e.g., 1/1, 5/4, 3/2")
         layout.addRow("Snap to Ratios", self.inputs['ratios'])
 
+        # New: Snap to Scale
+        self.inputs['scale'] = QLineEdit()
+        self.inputs['scale'].setPlaceholderText("e.g., 1/1, 9/8, 5/4, 4/3, 3/2, 5/3, 15/8")
+        layout.addRow("Snap to Scale", self.inputs['scale'])
+
         self.inputs['octave_repeat'] = QCheckBox()
+        self.inputs['octave_repeat'].setChecked(True) # Set to true by default
         layout.addRow("Octave Repeating", self.inputs['octave_repeat'])
 
         btn_layout = QHBoxLayout()

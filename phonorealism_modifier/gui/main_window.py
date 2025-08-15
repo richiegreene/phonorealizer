@@ -4,7 +4,7 @@ import sys
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QToolBar,
-    QMessageBox
+    QMessageBox, QDialog
 )
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt
@@ -108,7 +108,7 @@ class MainWindow(QMainWindow):
             return
         
         dlg = BatchEditDialog(self)
-        if dlg.exec() == dlg.Accepted:
+        if dlg.exec() == QDialog.Accepted:
             edits = dlg.get_data()
             self.harmonic_editor.apply_batch_edits(self.plot.selected_points, edits)
             self.plot.plot_harmonics(self.data)

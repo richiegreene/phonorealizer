@@ -57,6 +57,7 @@ class HarmonicEditor:
 
         edo_str = edits['edo'].strip()
         ratio_str = edits['ratios'].strip()
+        scale_str = edits['scale'].strip() # New line
 
         if edo_str:
             try:
@@ -76,7 +77,7 @@ class HarmonicEditor:
 
         elif ratio_str:
             try:
-                ratios = [float(Fraction(r.strip())) for r in ratio_str.split(',')]
+                ratios = [float(Fraction(r.strip())) for r in ratio_str.split(',') if r.strip()]
                 octave_repeat = edits['octave_repeat']
                 
                 for spot in selected_points:
@@ -90,7 +91,7 @@ class HarmonicEditor:
                     for ratio in ratios:
                         if ratio <= 0: continue
                         if octave_repeat:
-                            k = np.log2(current_freq / (f_ref * ratio))
+                            k = np.log2(current_freq / (f_ref * ratio)) if (f_ref * ratio) != 0 else 0
                             k_nearest = round(k)
                             target_freqs.append(f_ref * ratio * (2 ** k_nearest))
                         else:
@@ -101,6 +102,39 @@ class HarmonicEditor:
                         self.data.df.loc[idx_mask, 'frequency'] = closest_freq
             except Exception as e:
                 print(f"Error parsing ratios: {e}")
+
+        elif scale_str: # New Snap to Scale logic
+            try:
+                base_scale_ratios = [float(Fraction(r.strip())) for r in scale_str.split(',') if r.strip()]
+                octave_repeat = edits['octave_repeat']
+
+                for spot in selected_points:
+                    data = spot.data()
+                    idx_mask = (self.data.df['time'] == float(data['time'])) & \
+                               (self.data.df['harmonic_index'] == int(data['harmonic_index']))
+                    current_freq = self.data.df.loc[idx_mask, 'frequency'].iloc[0]
+                    if current_freq <= 0: continue
+
+                    harmonic_index = int(data['harmonic_index'])
+                    
+                    # Calculate the target scale for this harmonic index
+                    scaled_target_ratios = [r * harmonic_index for r in base_scale_ratios]
+                    
+                    target_freqs = []
+                    for ratio in scaled_target_ratios:
+                        if ratio <= 0: continue
+                        if octave_repeat:
+                            k = np.log2(current_freq / (f_ref * ratio)) if (f_ref * ratio) != 0 else 0
+                            k_nearest = round(k)
+                            target_freqs.append(f_ref * ratio * (2 ** k_nearest))
+                        else:
+                            target_freqs.append(f_ref * ratio)
+                    
+                    if target_freqs:
+                        closest_freq = min(target_freqs, key=lambda f: abs(f - current_freq))
+                        self.data.df.loc[idx_mask, 'frequency'] = closest_freq
+            except Exception as e:
+                print(f"Error parsing scale or applying snap to scale: {e}")
 
         # --- Step 3: Finalize ---
         self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
