@@ -73,6 +73,7 @@ class HarmonicsPlot(pg.PlotWidget):
 
         # Tool modes
         self.tool_mode = 'view'  # 'view', 'box', 'lasso', 'smooth', 'dodge'
+        self.tool_radius = 50  # Radius in pixels for smooth/dodge tools
         self._dragging = False
         self._drag_start = None
         self._lasso_points = []
@@ -91,7 +92,7 @@ class HarmonicsPlot(pg.PlotWidget):
         self.lasso_path.setVisible(False)
 
         # Preview circle for Smooth/Dodge
-        self.preview_circle = pg.ScatterPlotItem(size=20, pen=pg.mkPen('r', width=2), brush=pg.mkBrush(0,0,0,0))
+        self.preview_circle = pg.ScatterPlotItem(size=self.tool_radius, pen=pg.mkPen('r', width=2), brush=pg.mkBrush(0,0,0,0))
         self.addItem(self.preview_circle)
 
         # Disable default right/left drag
@@ -173,6 +174,22 @@ class HarmonicsPlot(pg.PlotWidget):
             return f"{note_name}{octave} {sign}{cents_deviation}c"
 
     # -------------------- Mouse Events --------------------
+    def wheelEvent(self, event):
+        if self.tool_mode in ['smooth', 'dodge']:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self.tool_radius *= 1.1
+            else:
+                self.tool_radius *= 0.9
+            self.tool_radius = np.clip(self.tool_radius, 5, 200) # Clamp radius
+            self.preview_circle.setSize(self.tool_radius)
+            # Update position as well if mouse is over the plot
+            pos = self.plotItem.vb.mapSceneToView(event.position())
+            self.preview_circle.setData([pos.x()], [pos.y()])
+            event.accept()
+        else:
+            super().wheelEvent(event)
+
     def mousePressEvent(self, event):
         pos = self.plotItem.vb.mapSceneToView(event.position())
         if event.button() == Qt.LeftButton:
@@ -195,9 +212,8 @@ class HarmonicsPlot(pg.PlotWidget):
         pos = self.plotItem.vb.mapSceneToView(event.position())
         # Update preview circle
         if self.tool_mode in ['smooth', 'dodge']:
-            radius = self.pixel_to_plot_radius(50)  # 50 pixels
             self.preview_circle.setData([pos.x()], [pos.y()])
-            self.preview_circle.setSize(radius*1000)
+            self.preview_circle.setSize(self.tool_radius)
         if self._dragging:
             if self.tool_mode == 'box':
                 rect = QRectF(self._drag_start, pos).normalized()
@@ -235,7 +251,7 @@ class HarmonicsPlot(pg.PlotWidget):
 
     # -------------------- Editing Tools --------------------
     def apply_smooth(self, pos, radius=0.05):
-        radius = self.pixel_to_plot_radius(50)
+        radius = self.pixel_to_plot_radius(self.tool_radius)
         modified = False
         for scatter in self.scatter_items:
             for spot in scatter.points():
@@ -252,7 +268,7 @@ class HarmonicsPlot(pg.PlotWidget):
             self.plot_harmonics(self.data)
 
     def apply_dodge(self, pos, radius=0.05, increment=0.1):
-        radius = self.pixel_to_plot_radius(50)
+        radius = self.pixel_to_plot_radius(self.tool_radius)
         modified = False
         for scatter in self.scatter_items:
             for spot in scatter.points():
