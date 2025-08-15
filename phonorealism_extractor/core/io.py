@@ -4,6 +4,44 @@ import numpy as np
 import librosa
 import svgwrite
 from scipy.interpolate import interp1d
+import pandas as pd
+
+def load_partials_from_csv(filepath):
+    """
+    Loads partials from a CSV file and converts them into the application's list format.
+
+    Args:
+        filepath (str): The path to the CSV file.
+
+    Returns:
+        tuple: A tuple containing:
+            - list: The partials data in a list-of-lists format.
+            - float: The total duration of the partials.
+    """
+    df = pd.read_csv(filepath)
+    required_cols = {'time', 'harmonic_index', 'frequency', 'amplitude'}
+    if not required_cols.issubset(df.columns):
+        raise ValueError(f"CSV missing required columns: {required_cols - set(df.columns)}")
+
+    partials = []
+    # Group by harmonic_index and convert each group to the correct format
+    grouped = df.groupby('harmonic_index')
+    max_harmonic_index = df['harmonic_index'].max()
+    partials_dict = {}
+
+    for harmonic_index, group in grouped:
+        # Sort by time just in case
+        group = group.sort_values('time')
+        # Create list of tuples (time, frequency, amplitude)
+        harmonic_data = list(zip(group['time'], group['frequency'], group['amplitude']))
+        partials_dict[harmonic_index] = harmonic_data
+
+    # Ensure the final list has empty lists for any missing harmonic indices
+    for i in range(1, int(max_harmonic_index) + 1):
+        partials.append(partials_dict.get(i, []))
+
+    duration = df['time'].max()
+    return partials, duration
 
 def db_to_linear(db):
     return 10 ** (db / 20)

@@ -40,5 +40,8 @@ def synthesize_from_partials(partials, sr, output_wav_path, duration, playback_s
         waveform[:len(partial_wave)] += partial_wave
 
     # Normalize and write to file
-    waveform /= np.max(np.abs(waveform))
+    max_abs_amp = np.max(np.abs(waveform))
+    if max_abs_amp > 0:
+        waveform /= max_abs_amp
+    
     sf.write(output_wav_path, waveform, sr)
