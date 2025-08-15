@@ -122,6 +122,29 @@ class HarmonicsPlot(pg.PlotWidget):
                 else:
                     spot.setPen(None)
 
+    def select_partial(self, pos):
+        # Find the closest point to the click
+        closest_spot = None
+        min_dist_sq = float('inf')
+        for scatter in self.scatter_items:
+            for spot in scatter.points():
+                p = spot.pos()
+                dist_sq = (p.x() - pos.x())**2 + (p.y() - pos.y())**2
+                if dist_sq < min_dist_sq:
+                    min_dist_sq = dist_sq
+                    closest_spot = spot
+
+        if closest_spot:
+            # Get the harmonic_index of the closest point
+            clicked_harmonic_index = closest_spot.data()['harmonic_index']
+            self.selected_points.clear()
+            # Select all points belonging to this harmonic_index
+            for scatter in self.scatter_items:
+                for spot in scatter.points():
+                    if spot.data()['harmonic_index'] == clicked_harmonic_index:
+                        self.selected_points.append(spot)
+            self.update_point_highlight()
+
     def update_playback_marker(self, time_position):
         self.playback_marker.setPos(time_position)
         self.playback_marker.setVisible(True)
@@ -163,6 +186,10 @@ class HarmonicsPlot(pg.PlotWidget):
             elif self.tool_mode == 'set_marker':
                 pos = self.plotItem.vb.mapSceneToView(event.position())
                 self.plot_clicked_signal.emit(pos.x())
+            elif self.tool_mode == 'select_partial': # New condition
+                pos = self.plotItem.vb.mapSceneToView(event.position())
+                self.select_partial(pos)
+                self._dragging = False # This tool is a single click, not a drag
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):

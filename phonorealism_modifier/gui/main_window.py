@@ -58,8 +58,10 @@ class MainWindow(QMainWindow):
 
         # Tool buttons
         self.tool_actions = {}
-        for tool in ['view', 'box', 'lasso', 'smooth', 'dodge']:
-            act = QAction(tool.capitalize(), self)
+        for tool in ['view', 'box', 'lasso', 'smooth', 'dodge', 'select_partial']:
+            # Special handling for 'select_partial' to display as 'Select Partial'
+            display_name = tool.replace('_', ' ').title() if tool == 'select_partial' else tool.capitalize()
+            act = QAction(display_name, self)
             act.setCheckable(True)
             act.triggered.connect(partial(self.set_tool, tool))
             self.toolbar.addAction(act)
