@@ -17,7 +17,7 @@ class HarmonicsPlot(pg.PlotWidget):
         self.scatter_items = []
         self.data = None
         self.selected_points = []
-        self.cmap = pg.colormap.get('viridis')
+        self.cmap = pg.colormap.get('inferno')
         self.min_amp = 0
         self.max_amp = 1
 
