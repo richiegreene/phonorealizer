@@ -3,7 +3,7 @@ import os
 import sys
 
 from PySide6.QtWidgets import (
-    QMainWindow, QVBoxLayout, QWidget, QFileDialog, QToolBar,
+    QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QToolBar,
     QMessageBox
 )
 from PySide6.QtGui import QAction
@@ -32,9 +32,16 @@ class MainWindow(QMainWindow):
         central.setLayout(layout)
         self.setCentralWidget(central)
 
+        # Connect signals
+        self.audio_player.playback_position_changed.connect(self.plot.update_playback_marker)
+        self.plot.plot_clicked_signal.connect(self.set_playback_position_from_plot)
+
+        self.set_marker_mode = False # Flag for setting playback marker
+
     def _init_ui(self):
         self.toolbar = QToolBar("Main Toolbar")
         self.addToolBar(self.toolbar)
+        self.statusBar() # Initialize status bar
 
         # File actions
         open_action = QAction("Open CSV", self)
@@ -103,3 +110,23 @@ class MainWindow(QMainWindow):
             edits = dlg.get_data()
             self.harmonic_editor.apply_batch_edits(self.plot.selected_points, edits)
             self.plot.plot_harmonics(self.data)
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_I:
+            self.set_marker_mode = not self.set_marker_mode
+            if self.set_marker_mode:
+                QApplication.setOverrideCursor(Qt.CrossCursor)
+                self.statusBar().showMessage("Playback marker mode: Click on plot to set playback position.")
+            else:
+                QApplication.restoreOverrideCursor()
+                self.statusBar().clearMessage()
+            self.plot.tool_mode = 'set_marker' if self.set_marker_mode else 'view' # Set plot tool mode
+        else:
+            super().keyPressEvent(event)
+
+    def set_playback_position_from_plot(self, time_position):
+        self.audio_player.set_start_position(time_position)
+        self.plot.update_playback_marker(time_position)
+        self.set_marker_mode = False # Exit marker mode after setting
+        QApplication.restoreOverrideCursor()
+        self.statusBar().clearMessage()

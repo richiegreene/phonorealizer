@@ -1,9 +1,11 @@
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtCore import Qt, QPointF, QRectF
+from PySide6.QtCore import Qt, QPointF, QRectF, Signal
 from matplotlib.path import Path
 
 class HarmonicsPlot(pg.PlotWidget):
+    plot_clicked_signal = Signal(float)
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setBackground('w')
@@ -47,6 +49,11 @@ class HarmonicsPlot(pg.PlotWidget):
         # Preview circle for Smooth/Dodge
         self.preview_circle = pg.ScatterPlotItem(size=self.tool_radius, pen=pg.mkPen('r', width=2), brush=pg.mkBrush(0,0,0,0))
         self.addItem(self.preview_circle)
+
+        # Playback marker
+        self.playback_marker = pg.InfiniteLine(pos=0, angle=90, movable=False, pen=pg.mkPen('b', width=2))
+        self.addItem(self.playback_marker)
+        self.playback_marker.setVisible(False)
 
         self.getViewBox().setMouseEnabled(x=False, y=False)
         self.setMenuEnabled(False)
@@ -115,6 +122,13 @@ class HarmonicsPlot(pg.PlotWidget):
                 else:
                     spot.setPen(None)
 
+    def update_playback_marker(self, time_position):
+        self.playback_marker.setPos(time_position)
+        self.playback_marker.setVisible(True)
+
+    def hide_playback_marker(self):
+        self.playback_marker.setVisible(False)
+
     def wheelEvent(self, event):
         if self.tool_mode in ['smooth', 'dodge']:
             delta = event.angleDelta().y()
@@ -146,6 +160,9 @@ class HarmonicsPlot(pg.PlotWidget):
                 self._drag_modifications.clear()
                 self._on_tool_timer()
                 self.tool_timer.start(50)
+            elif self.tool_mode == 'set_marker':
+                pos = self.plotItem.vb.mapSceneToView(event.position())
+                self.plot_clicked_signal.emit(pos.x())
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):

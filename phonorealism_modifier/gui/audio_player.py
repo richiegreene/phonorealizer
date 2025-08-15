@@ -1,6 +1,6 @@
 import os
 import tempfile
-from PySide6.QtCore import QUrl, QTemporaryFile
+from PySide6.QtCore import QUrl, QTemporaryFile, Signal, QObject
 from PySide6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PySide6.QtWidgets import QMessageBox
 
@@ -10,8 +10,11 @@ import os
 sys.path.append("/Users/richiegreene/Desktop/Phonorealism/")
 from phonorealism_extractor.core.synthesizer import synthesize_from_partials
 
-class AudioPlayer:
+class AudioPlayer(QObject):
+    playback_position_changed = Signal(float)
+
     def __init__(self, parent=None):
+        super().__init__(parent)
         self.parent = parent # This will be the MainWindow instance
         self.media_player = None
         self.audio_output = None
@@ -68,12 +71,20 @@ class AudioPlayer:
             self.media_player.play()
 
             self.media_player.mediaStatusChanged.connect(lambda status: self._media_status_changed(status, play_action_widget))
+            self.media_player.positionChanged.connect(self._on_position_changed)
 
         except Exception as e:
             QMessageBox.critical(self.parent, "Error", f"Failed to synthesize or play audio: {e}")
             if self.temp_wav_file:
                 self.temp_wav_file.remove()
             play_action_widget.setText("Play Audio")
+
+    def _on_position_changed(self, position_ms):
+        self.playback_position_changed.emit(position_ms / 1000.0)
+
+    def set_start_position(self, time_in_seconds):
+        if self.media_player:
+            self.media_player.setPosition(int(time_in_seconds * 1000))
 
     def _media_status_changed(self, status, play_action_widget):
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
