@@ -370,9 +370,9 @@ class MainWindow(QMainWindow):
         save_action.triggered.connect(self.save_csv)
         self.toolbar.addAction(save_action)
 
-        play_action = QAction("Play Audio", self)
-        play_action.triggered.connect(self.play_audio)
-        self.toolbar.addAction(play_action)
+        self.play_action = QAction("Play Audio", self)
+        self.play_action.triggered.connect(self.toggle_playback)
+        self.toolbar.addAction(self.play_action)
 
         # Tool buttons
         self.tool_actions = {}
@@ -418,7 +418,15 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to save file:\n{e}")
 
-    def play_audio(self):
+    def toggle_playback(self):
+        if hasattr(self, 'media_player') and self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.stop()
+            self.play_action.setText("Play Audio")
+        else:
+            self._start_playback()
+            self.play_action.setText("Stop Audio")
+
+    def _start_playback(self):
         if self.data.df is None or self.data.df.empty:
             QMessageBox.warning(self, "No Data", "Please load a CSV file first.")
             return
@@ -436,13 +444,13 @@ class MainWindow(QMainWindow):
         duration = self.data.df['time'].max() if not self.data.df.empty else 1.0 # Duration of the audio
 
         # Create a temporary file for the WAV output
-        temp_wav_file = QTemporaryFile("XXXXXX.wav")
-        if not temp_wav_file.open():
+        self.temp_wav_file = QTemporaryFile("XXXXXX.wav") # Store as instance variable
+        if not self.temp_wav_file.open():
             QMessageBox.critical(self, "Error", "Could not create temporary file.")
             return
-        temp_wav_file.setAutoRemove(True) # Ensure the file is removed when closed
+        self.temp_wav_file.setAutoRemove(True) # Ensure the file is removed when closed
 
-        output_path = temp_wav_file.fileName()
+        output_path = self.temp_wav_file.fileName()
 
         try:
             synthesize_from_partials(partials_data, sr, output_path, duration)
@@ -460,7 +468,9 @@ class MainWindow(QMainWindow):
 
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to synthesize or play audio: {e}")
-            temp_wav_file.remove() # Ensure cleanup on error
+            if hasattr(self, 'temp_wav_file'):
+                self.temp_wav_file.remove() # Ensure cleanup on error
+            self.play_action.setText("Play Audio") # Reset button on error
 
     def _media_status_changed(self, status):
         if status == QMediaPlayer.MediaStatus.EndOfMedia:
@@ -468,9 +478,13 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'media_player'):
                 self.media_player.stop()
                 self.media_player.setSource(QUrl()) # Clear source
-                del self.media_player
+                self.media_player = None # Explicitly set to None
             if hasattr(self, 'audio_output'):
-                del self.audio_output
+                self.audio_output = None # Explicitly set to None
+            if hasattr(self, 'temp_wav_file'):
+                self.temp_wav_file.close() # Close and remove temporary file
+                self.temp_wav_file = None
+            self.play_action.setText("Play Audio") # Reset button text
 
     def batch_edit(self):
         if not self.plot.selected_points:
