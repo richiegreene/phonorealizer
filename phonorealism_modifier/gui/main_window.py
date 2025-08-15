@@ -44,11 +44,11 @@ class MainWindow(QMainWindow):
         self.statusBar() # Initialize status bar
 
         # File actions
-        open_action = QAction("Open CSV", self)
+        open_action = QAction("Open", self)
         open_action.triggered.connect(self.open_csv)
         self.toolbar.addAction(open_action)
 
-        save_action = QAction("Save CSV", self)
+        save_action = QAction("Save", self)
         save_action.triggered.connect(self.save_csv)
         self.toolbar.addAction(save_action)
 
