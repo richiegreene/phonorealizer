@@ -40,9 +40,9 @@ class BatchEditDialog(QDialog):
         self.setWindowTitle("Batch Edit Selected Points")
         layout = QFormLayout(self)
         self.inputs = {}
-        for key in ['time', 'frequency', 'amplitude']:
+        for key in ['Sec', 'Hz', 'Cents', 'dB']:
             le = QLineEdit()
-            le.setPlaceholderText("Leave blank to skip")
+            le.setPlaceholderText("e.g., +10 or -5.5")
             layout.addRow(key, le)
             self.inputs[key] = le
 
@@ -383,29 +383,64 @@ class MainWindow(QMainWindow):
         if not self.plot.selected_points:
             QMessageBox.warning(self, "No Points Selected", "Please select points first.")
             return
+        
         dlg = BatchEditDialog(self)
         if dlg.exec() == QDialog.Accepted:
             edits = dlg.get_data()
+
+            # Create a single mask for all selected points for efficiency
+            # This is complex, so we stick to iterating for now, but this is a place for optimization
+
             for spot in self.plot.selected_points:
                 data = spot.data()
-                idx = (self.data.df['time'] == float(data['time'])) & \
-                      (self.data.df['frequency'] == float(data['frequency'])) & \
-                      (self.data.df['amplitude'] == float(data['amplitude'])) & \
-                      (self.data.df['harmonic_index'] == int(data['harmonic_index']))
-                
-                for key, val_str in edits.items():
-                    if val_str.strip() != '':
+                # Find the exact row in the DataFrame to modify
+                idx_mask = (self.data.df['time'] == float(data['time'])) & \
+                           (self.data.df['frequency'] == float(data['frequency'])) & \
+                           (self.data.df['amplitude'] == float(data['amplitude'])) & \
+                           (self.data.df['harmonic_index'] == int(data['harmonic_index']))
+
+                # --- Handle Time (Sec) and Amplitude (dB) ---
+                key_map = {'Sec': 'time', 'dB': 'amplitude'}
+                for key, col_name in key_map.items():
+                    val_str = edits[key].strip()
+                    if val_str:
                         try:
                             val_float = float(val_str)
-                            # Check for relative adjustment
-                            if val_str.strip().startswith(('+', '-')):
-                                self.data.df.loc[idx, key] += val_float
+                            if val_str.startswith(('+', '-')):
+                                self.data.df.loc[idx_mask, col_name] += val_float
                             else:
-                                # Absolute assignment
-                                self.data.df.loc[idx, key] = val_float
+                                self.data.df.loc[idx_mask, col_name] = val_float
                         except ValueError:
-                            print(f"Could not convert '{val_str}' to a number for key '{key}'. Skipping.")
+                            print(f"Could not parse '{val_str}' for {key}. Skipping.")
 
+                # --- Handle Frequency (Hz and Cents) ---
+                current_freq = self.data.df.loc[idx_mask, 'frequency'].iloc[0]
+                
+                # Hz adjustment
+                hz_str = edits['Hz'].strip()
+                if hz_str:
+                    try:
+                        hz_float = float(hz_str)
+                        if hz_str.startswith(('+', '-')):
+                            current_freq += hz_float
+                        else:
+                            current_freq = hz_float
+                    except ValueError:
+                        print(f"Could not parse '{hz_str}' for Hz. Skipping.")
+
+                # Cents adjustment (applied to the potentially new frequency)
+                cents_str = edits['Cents'].strip()
+                if cents_str:
+                    try:
+                        cents_float = float(cents_str)
+                        # Cents are always relative
+                        current_freq *= (2 ** (cents_float / 1200.0))
+                    except ValueError:
+                        print(f"Could not parse '{cents_str}' for Cents. Skipping.")
+                
+                self.data.df.loc[idx_mask, 'frequency'] = current_freq
+
+            # Update data structures and redraw the plot once after all changes
             self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
             self.plot.plot_harmonics(self.data)
 
