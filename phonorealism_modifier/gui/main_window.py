@@ -21,7 +21,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("Phonorealism Modifier")
         self.resize(1000, 700)
         self.data = HarmonicData()
-        self.plot = HarmonicsPlot()
+        self.plot = HarmonicsPlot(self) # Pass self (MainWindow) as parent
         self.audio_player = AudioPlayer(self) # Pass self (MainWindow) as parent
         self.harmonic_editor = HarmonicEditor(self.data)
         self._init_ui()
@@ -58,9 +58,14 @@ class MainWindow(QMainWindow):
 
         # Tool buttons
         self.tool_actions = {}
-        for tool in ['view', 'box', 'lasso', 'smooth', 'dodge', 'select_partial']:
-            # Special handling for 'select_partial' to display as 'Select Partial'
-            display_name = tool.replace('_', ' ').title() if tool == 'select_partial' else tool.capitalize()
+        for tool in ['view', 'box', 'lasso', 'circle', 'select_partial']: # Removed 'smooth', 'dodge', added 'circle'
+            # Special handling for 'select_partial' and 'circle' to display correctly
+            if tool == 'select_partial':
+                display_name = 'Select Partial'
+            elif tool == 'circle':
+                display_name = 'Circle'
+            else:
+                display_name = tool.capitalize()
             act = QAction(display_name, self)
             act.setCheckable(True)
             act.triggered.connect(partial(self.set_tool, tool))
