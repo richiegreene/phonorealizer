@@ -74,14 +74,6 @@ class HarmonicEditor:
             except ValueError:
                 print(f"Could not parse '{time_scale_str}' for Time Scale. Skipping.")
 
-        time_shift_str = edits.get('time_shift', '').strip()
-        if time_shift_str:
-            try:
-                shift_value = float(time_shift_str)
-                self.data.df.loc[selected_indices, 'time'] += shift_value
-            except ValueError:
-                print(f"Could not parse '{time_shift_str}' for Time Shift. Skipping.")
-
         # --- Step 4: Smoothing ---
         smoothing_hz_str = edits.get('smoothing_hz', '').strip()
         if smoothing_hz_str:
