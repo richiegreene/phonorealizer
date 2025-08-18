@@ -82,8 +82,26 @@ class HarmonicEditor:
             except ValueError:
                 print(f"Could not parse '{time_shift_str}' for Time Shift. Skipping.")
 
+        # --- Step 4: Smoothing ---
+        smoothing_str = edits.get('smoothing', '').strip()
+        if smoothing_str:
+            try:
+                smoothing_perc = float(smoothing_str)
+                if 0 <= smoothing_perc <= 100:
+                    p = smoothing_perc / 100.0
+                    
+                    selected_df = self.data.df.loc[selected_indices]
+                    for h_idx, group in selected_df.groupby('harmonic_index'):
+                        if len(group) > 1:
+                            avg_freq = group['frequency'].mean()
+                            
+                            self.data.df.loc[group.index, 'frequency'] = group['frequency'] * (1 - p) + avg_freq * p
+                else:
+                    print("Smoothing percentage must be between 0 and 100.")
+            except ValueError:
+                print(f"Could not parse '{smoothing_str}' for Smoothing. Skipping.")
 
-        # --- Step 4: Apply Snapping (to the newly modified frequencies) ---
+        # --- Step 5: Apply Snapping (to the newly modified frequencies) ---
         try:
             f_ref = float(edits['ref_pitch'])
         except (ValueError, TypeError):
@@ -160,5 +178,5 @@ class HarmonicEditor:
             except Exception as e:
                 print(f"Error parsing scale or applying snap to scale: {e}")
 
-        # --- Step 5: Finalize ---
+        # --- Step 6: Finalize ---
         self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}

@@ -29,6 +29,12 @@ class BatchEditDialog(QDialog):
         self.inputs['time_scale'].setPlaceholderText("e.g., 2.0 or 0.5")
         layout.addRow("Time Scale", self.inputs['time_scale'])
 
+        # Smoothing
+        layout.addRow(pg.QtWidgets.QLabel("———" + " Smoothing ———")) # Separator
+        self.inputs['smoothing'] = QLineEdit()
+        self.inputs['smoothing'].setPlaceholderText("0-100")
+        layout.addRow("Smoothing (%)", self.inputs['smoothing'])
+
         # Snapping Edits
         layout.addRow(pg.QtWidgets.QLabel("———" + " Snapping ———")) # Separator
         
