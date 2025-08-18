@@ -19,6 +19,16 @@ class BatchEditDialog(QDialog):
             layout.addRow(key, le)
             self.inputs[key] = le
 
+        # Time Edits
+        layout.addRow(pg.QtWidgets.QLabel("———" + " Time Edits ———")) # Separator
+        self.inputs['time_shift'] = QLineEdit()
+        self.inputs['time_shift'].setPlaceholderText("e.g., +0.1 or -0.05")
+        layout.addRow("Time Shift (s)", self.inputs['time_shift'])
+
+        self.inputs['time_scale'] = QLineEdit()
+        self.inputs['time_scale'].setPlaceholderText("e.g., 2.0 or 0.5")
+        layout.addRow("Time Scale", self.inputs['time_scale'])
+
         # Snapping Edits
         layout.addRow(pg.QtWidgets.QLabel("———" + " Snapping ———")) # Separator
         

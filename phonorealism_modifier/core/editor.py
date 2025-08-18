@@ -6,28 +6,42 @@ class HarmonicEditor:
         self.data = harmonic_data
 
     def apply_batch_edits(self, selected_points, edits):
-        # --- Step 1: Apply standard relative/absolute edits ---
+        if not selected_points:
+            return
+
+        # --- Step 1: Get selected indices ---
+        try:
+            selected_indices = [spot.data()['index'] for spot in selected_points]
+        except KeyError:
+            point_masks = []
+            for spot in selected_points:
+                data = spot.data()
+                point_masks.append(
+                    (self.data.df['time'] == float(data['time'])) &
+                    (self.data.df['frequency'] == float(data['frequency'])) &
+                    (self.data.df['amplitude'] == float(data['amplitude'])) &
+                    (self.data.df['harmonic_index'] == int(data['harmonic_index']))
+                )
+            selection_mask = np.logical_or.reduce(point_masks)
+            selected_indices = self.data.df[selection_mask].index
+        
+        # --- Step 2: Apply standard relative/absolute edits ---
         key_map = {'Sec': 'time', 'dB': 'amplitude'}
-        for spot in selected_points:
-            data = spot.data()
-            idx_mask = (self.data.df['time'] == float(data['time'])) & \
-                       (self.data.df['frequency'] == float(data['frequency'])) & \
-                       (self.data.df['amplitude'] == float(data['amplitude'])) & \
-                       (self.data.df['harmonic_index'] == int(data['harmonic_index']))
+        for key, col_name in key_map.items():
+            val_str = edits[key].strip()
+            if val_str:
+                try:
+                    val_float = float(val_str)
+                    if val_str.startswith(('+', '-')):
+                        self.data.df.loc[selected_indices, col_name] += val_float
+                    else:
+                        self.data.df.loc[selected_indices, col_name] = val_float
+                except ValueError:
+                    print(f"Could not parse '{val_str}' for {key}. Skipping.")
 
-            for key, col_name in key_map.items():
-                val_str = edits[key].strip()
-                if val_str:
-                    try:
-                        val_float = float(val_str)
-                        if val_str.startswith(('+', '-')):
-                            self.data.df.loc[idx_mask, col_name] += val_float
-                        else:
-                            self.data.df.loc[idx_mask, col_name] = val_float
-                    except ValueError:
-                        print(f"Could not parse '{val_str}' for {key}. Skipping.")
-
-            current_freq = self.data.df.loc[idx_mask, 'frequency'].iloc[0]
+        # Frequency edits (Hz and Cents) are applied per point due to their nature
+        for idx in selected_indices:
+            current_freq = self.data.df.loc[idx, 'frequency']
             hz_str = edits['Hz'].strip()
             if hz_str:
                 try:
@@ -47,9 +61,29 @@ class HarmonicEditor:
                 except ValueError:
                     print(f"Could not parse '{cents_str}' for Cents. Skipping.")
             
-            self.data.df.loc[idx_mask, 'frequency'] = current_freq
+            self.data.df.loc[idx, 'frequency'] = current_freq
 
-        # --- Step 2: Apply Snapping (to the newly modified frequencies) ---
+        # --- Step 3: Apply Time Edits ---
+        time_scale_str = edits.get('time_scale', '').strip()
+        if time_scale_str:
+            try:
+                scale_factor = float(time_scale_str)
+                if scale_factor > 0:
+                    min_time = self.data.df.loc[selected_indices, 'time'].min()
+                    self.data.df.loc[selected_indices, 'time'] = min_time + (self.data.df.loc[selected_indices, 'time'] - min_time) * scale_factor
+            except ValueError:
+                print(f"Could not parse '{time_scale_str}' for Time Scale. Skipping.")
+
+        time_shift_str = edits.get('time_shift', '').strip()
+        if time_shift_str:
+            try:
+                shift_value = float(time_shift_str)
+                self.data.df.loc[selected_indices, 'time'] += shift_value
+            except ValueError:
+                print(f"Could not parse '{time_shift_str}' for Time Shift. Skipping.")
+
+
+        # --- Step 4: Apply Snapping (to the newly modified frequencies) ---
         try:
             f_ref = float(edits['ref_pitch'])
         except (ValueError, TypeError):
@@ -57,21 +91,18 @@ class HarmonicEditor:
 
         edo_str = edits['edo'].strip()
         ratio_str = edits['ratios'].strip()
-        scale_str = edits['scale'].strip() # New line
+        scale_str = edits['scale'].strip()
 
         if edo_str:
             try:
                 edo = int(edo_str)
-                for spot in selected_points:
-                    data = spot.data()
-                    idx_mask = (self.data.df['time'] == float(data['time'])) & \
-                               (self.data.df['harmonic_index'] == int(data['harmonic_index']))
-                    current_freq = self.data.df.loc[idx_mask, 'frequency'].iloc[0]
+                for idx in selected_indices:
+                    current_freq = self.data.df.loc[idx, 'frequency']
                     if current_freq > 0:
                         n = edo * np.log2(current_freq / f_ref)
                         n_nearest = round(n)
                         new_freq = f_ref * (2 ** (n_nearest / edo))
-                        self.data.df.loc[idx_mask, 'frequency'] = new_freq
+                        self.data.df.loc[idx, 'frequency'] = new_freq
             except (ValueError, TypeError):
                 print(f"Invalid EDO value: {edo_str}")
 
@@ -80,11 +111,8 @@ class HarmonicEditor:
                 ratios = [float(Fraction(r.strip())) for r in ratio_str.split(',') if r.strip()]
                 octave_repeat = edits['octave_repeat']
                 
-                for spot in selected_points:
-                    data = spot.data()
-                    idx_mask = (self.data.df['time'] == float(data['time'])) & \
-                               (self.data.df['harmonic_index'] == int(data['harmonic_index']))
-                    current_freq = self.data.df.loc[idx_mask, 'frequency'].iloc[0]
+                for idx in selected_indices:
+                    current_freq = self.data.df.loc[idx, 'frequency']
                     if current_freq <= 0: continue
 
                     target_freqs = []
@@ -99,25 +127,21 @@ class HarmonicEditor:
                     
                     if target_freqs:
                         closest_freq = min(target_freqs, key=lambda f: abs(f - current_freq))
-                        self.data.df.loc[idx_mask, 'frequency'] = closest_freq
+                        self.data.df.loc[idx, 'frequency'] = closest_freq
             except Exception as e:
                 print(f"Error parsing ratios: {e}")
 
-        elif scale_str: # New Snap to Scale logic
+        elif scale_str:
             try:
                 base_scale_ratios = [float(Fraction(r.strip())) for r in scale_str.split(',') if r.strip()]
                 octave_repeat = edits['octave_repeat']
 
-                for spot in selected_points:
-                    data = spot.data()
-                    idx_mask = (self.data.df['time'] == float(data['time'])) & \
-                               (self.data.df['harmonic_index'] == int(data['harmonic_index']))
-                    current_freq = self.data.df.loc[idx_mask, 'frequency'].iloc[0]
+                for idx in selected_indices:
+                    current_freq = self.data.df.loc[idx, 'frequency']
                     if current_freq <= 0: continue
 
-                    harmonic_index = int(data['harmonic_index'])
+                    harmonic_index = self.data.df.loc[idx, 'harmonic_index']
                     
-                    # Calculate the target scale for this harmonic index
                     scaled_target_ratios = [r * harmonic_index for r in base_scale_ratios]
                     
                     target_freqs = []
@@ -132,9 +156,9 @@ class HarmonicEditor:
                     
                     if target_freqs:
                         closest_freq = min(target_freqs, key=lambda f: abs(f - current_freq))
-                        self.data.df.loc[idx_mask, 'frequency'] = closest_freq
+                        self.data.df.loc[idx, 'frequency'] = closest_freq
             except Exception as e:
                 print(f"Error parsing scale or applying snap to scale: {e}")
 
-        # --- Step 3: Finalize ---
+        # --- Step 5: Finalize ---
         self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
