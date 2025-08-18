@@ -75,12 +75,19 @@ class HarmonicEditor:
                 print(f"Could not parse '{time_scale_str}' for Time Scale. Skipping.")
 
         # --- Step 4: Smoothing ---
+        use_smoothstep = edits.get('smoothstep', False)
+
+        def smoothstep(x):
+            return x * x * (3 - 2 * x)
+
         smoothing_hz_str = edits.get('smoothing_hz', '').strip()
         if smoothing_hz_str:
             try:
                 smoothing_perc = float(smoothing_hz_str)
                 if 0 <= smoothing_perc <= 100:
                     p = smoothing_perc / 100.0
+                    if use_smoothstep:
+                        p = smoothstep(p)
                     
                     selected_df = self.data.df.loc[selected_indices]
                     for h_idx, group in selected_df.groupby('harmonic_index'):
@@ -99,6 +106,8 @@ class HarmonicEditor:
                 smoothing_perc = float(smoothing_db_str)
                 if 0 <= smoothing_perc <= 100:
                     p = smoothing_perc / 100.0
+                    if use_smoothstep:
+                        p = smoothstep(p)
                     
                     selected_df = self.data.df.loc[selected_indices]
                     for h_idx, group in selected_df.groupby('harmonic_index'):

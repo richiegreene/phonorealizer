@@ -35,6 +35,9 @@ class BatchEditDialog(QDialog):
         self.inputs['smoothing_db'].setPlaceholderText("0-100")
         layout.addRow("dB", self.inputs['smoothing_db'])
 
+        self.inputs['smoothstep'] = QCheckBox()
+        layout.addRow("Smoothstep", self.inputs['smoothstep'])
+
         # Snapping Edits
         layout.addRow(pg.QtWidgets.QLabel("———" + " Snapping ———")) # Separator
         
