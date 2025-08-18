@@ -89,6 +89,10 @@ class AudioPlayer(QObject):
 
             self.media_player.mediaStatusChanged.connect(lambda status: self._media_status_changed(status, play_action_widget))
             
+            # Re-initialize audio output to ensure device is available
+            self.audio_output = QAudioOutput()
+            self.media_player.setAudioOutput(self.audio_output)
+
             self.media_player.setSource(QUrl.fromLocalFile(output_path))
             self.media_player.setPosition(start_position) # Set position
             self.audio_output.setVolume(0.5)

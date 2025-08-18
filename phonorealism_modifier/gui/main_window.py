@@ -58,12 +58,10 @@ class MainWindow(QMainWindow):
 
         # Tool buttons
         self.tool_actions = {}
-        for tool in ['view', 'box', 'lasso', 'circle', 'select_partial']: # Removed 'smooth', 'dodge', added 'circle'
+        for tool in ['view', 'box', 'lasso', 'select_partial']: # Removed 'smooth', 'dodge', added 'circle'
             # Special handling for 'select_partial' and 'circle' to display correctly
             if tool == 'select_partial':
                 display_name = 'Select Partial'
-            elif tool == 'circle':
-                display_name = 'Circle'
             else:
                 display_name = tool.capitalize()
             act = QAction(display_name, self)
