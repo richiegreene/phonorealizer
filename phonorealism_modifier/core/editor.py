@@ -83,10 +83,10 @@ class HarmonicEditor:
                 print(f"Could not parse '{time_shift_str}' for Time Shift. Skipping.")
 
         # --- Step 4: Smoothing ---
-        smoothing_str = edits.get('smoothing', '').strip()
-        if smoothing_str:
+        smoothing_hz_str = edits.get('smoothing_hz', '').strip()
+        if smoothing_hz_str:
             try:
-                smoothing_perc = float(smoothing_str)
+                smoothing_perc = float(smoothing_hz_str)
                 if 0 <= smoothing_perc <= 100:
                     p = smoothing_perc / 100.0
                     
@@ -99,7 +99,25 @@ class HarmonicEditor:
                 else:
                     print("Smoothing percentage must be between 0 and 100.")
             except ValueError:
-                print(f"Could not parse '{smoothing_str}' for Smoothing. Skipping.")
+                print(f"Could not parse '{smoothing_hz_str}' for Smoothing Hz. Skipping.")
+
+        smoothing_db_str = edits.get('smoothing_db', '').strip()
+        if smoothing_db_str:
+            try:
+                smoothing_perc = float(smoothing_db_str)
+                if 0 <= smoothing_perc <= 100:
+                    p = smoothing_perc / 100.0
+                    
+                    selected_df = self.data.df.loc[selected_indices]
+                    for h_idx, group in selected_df.groupby('harmonic_index'):
+                        if len(group) > 1:
+                            avg_amp = group['amplitude'].mean()
+                            
+                            self.data.df.loc[group.index, 'amplitude'] = group['amplitude'] * (1 - p) + avg_amp * p
+                else:
+                    print("Smoothing percentage must be between 0 and 100.")
+            except ValueError:
+                print(f"Could not parse '{smoothing_db_str}' for Smoothing dB. Skipping.")
 
         # --- Step 5: Apply Snapping (to the newly modified frequencies) ---
         try:

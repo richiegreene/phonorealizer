@@ -31,9 +31,13 @@ class BatchEditDialog(QDialog):
 
         # Smoothing
         layout.addRow(pg.QtWidgets.QLabel("———" + " Smoothing ———")) # Separator
-        self.inputs['smoothing'] = QLineEdit()
-        self.inputs['smoothing'].setPlaceholderText("0-100")
-        layout.addRow("Smoothing (%)", self.inputs['smoothing'])
+        self.inputs['smoothing_hz'] = QLineEdit()
+        self.inputs['smoothing_hz'].setPlaceholderText("0-100")
+        layout.addRow("Hz", self.inputs['smoothing_hz'])
+
+        self.inputs['smoothing_db'] = QLineEdit()
+        self.inputs['smoothing_db'].setPlaceholderText("0-100")
+        layout.addRow("dB", self.inputs['smoothing_db'])
 
         # Snapping Edits
         layout.addRow(pg.QtWidgets.QLabel("———" + " Snapping ———")) # Separator
