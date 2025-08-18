@@ -26,6 +26,13 @@ class AudioPlayer(QObject):
         # Defer connecting mediaStatusChanged until playback starts
 
     def toggle_playback(self, harmonic_data, play_action_widget):
+        current_position = self.media_player.position()
+        
+        # If data is dirty, always re-synthesize
+        if harmonic_data.dirty:
+            self._start_playback(harmonic_data, play_action_widget, start_position=current_position)
+            return
+
         if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.media_player.pause()
             play_action_widget.setText("Play")
@@ -43,7 +50,7 @@ class AudioPlayer(QObject):
         if play_action_widget:
             play_action_widget.setText("Play")
 
-    def _start_playback(self, harmonic_data, play_action_widget):
+    def _start_playback(self, harmonic_data, play_action_widget, start_position=0):
         if harmonic_data.df is None or harmonic_data.df.empty:
             QMessageBox.warning(self.parent, "No Data", "Please load a CSV file first.")
             return
@@ -72,6 +79,7 @@ class AudioPlayer(QObject):
 
         try:
             synthesize_from_partials(partials_data, sr, output_path, duration)
+            harmonic_data.dirty = False # Mark data as clean
             
             # Disconnect old status connection if any, to avoid multiple triggers
             try:
@@ -82,6 +90,7 @@ class AudioPlayer(QObject):
             self.media_player.mediaStatusChanged.connect(lambda status: self._media_status_changed(status, play_action_widget))
             
             self.media_player.setSource(QUrl.fromLocalFile(output_path))
+            self.media_player.setPosition(start_position) # Set position
             self.audio_output.setVolume(0.5)
             self.media_player.play()
             play_action_widget.setText("Pause")
