@@ -1,6 +1,7 @@
 from functools import partial
 import os
 import sys
+import pandas as pd # Added import
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QToolBar,
@@ -48,6 +49,10 @@ class MainWindow(QMainWindow):
         open_action.triggered.connect(self.open_csv)
         self.toolbar.addAction(open_action)
 
+        insert_action = QAction("Insert CSV", self) # New action
+        insert_action.triggered.connect(self.insert_csv) # Connect to new method
+        self.toolbar.addAction(insert_action) # Add to toolbar
+
         save_action = QAction("Save", self)
         save_action.triggered.connect(self.save_csv)
         self.toolbar.addAction(save_action)
@@ -91,6 +96,31 @@ class MainWindow(QMainWindow):
             self.current_file_path = path
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load CSV:\n{e}")
+
+    def insert_csv(self): # New method
+        if self.data.df is None or self.data.df.empty:
+            QMessageBox.warning(self, "No Data Loaded", "Please load an initial CSV file before inserting.")
+            return
+
+        path, _ = QFileDialog.getOpenFileName(self, "Insert Harmonic CSV", "", "CSV Files (*.csv)")
+        if not path:
+            return
+
+        try:
+            # Get current playback position as insert_time
+            insert_time = self.audio_player.media_player.position() / 1000.0 # Convert ms to seconds
+
+            # Load the new CSV into a temporary DataFrame
+            new_df = pd.read_csv(path)
+            required_cols = {'time', 'harmonic_index', 'frequency', 'amplitude'}
+            if not required_cols.issubset(new_df.columns):
+                raise ValueError(f"New CSV missing required columns: {required_cols - set(new_df.columns)}")
+
+            self.data.insert_csv_data(new_df, insert_time)
+            self.plot.plot_harmonics(self.data)
+            QMessageBox.information(self, "Success", f"CSV inserted at {insert_time:.2f} seconds.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to insert CSV:\n{e}")
 
     def save_csv(self):
         if hasattr(self, "current_file_path"):
