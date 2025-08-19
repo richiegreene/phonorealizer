@@ -107,7 +107,7 @@ class HarmonicsPlot(pg.PlotWidget):
         self.selected_points.clear()
         for scatter in self.scatter_items:
             for spot in scatter.points():
-                if poly_path.contains_point((spot.pos().x(), spot.y())):
+                if poly_path.contains_point((spot.pos().x(), spot.pos().y())):
                     self.selected_points.append(spot)
         self.update_point_highlight()
 
