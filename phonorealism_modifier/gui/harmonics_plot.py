@@ -71,37 +71,17 @@ class HarmonicsPlot(pg.PlotWidget):
         if self.y_axis_mode == "Hz":
             self.setLabel('left', 'Frequency', units='Hz')
             self.getAxis('left').setLogMode(False)
-            # Set custom ticks for Hz mode (octave emphasis)
-            major_ticks = []
-            
-            # Get the visible range of the plot
-            view_range = self.plotItem.getViewBox().viewRange()[1] # Y-axis range
-            min_freq_view = 10**(view_range[0]) # Assuming log scale for view range
-            max_freq_view = 10**(view_range[1])
-
-            # Generate octave frequencies around the visible range
-            # Start from a low C note and go up by octaves
-            current_freq = self.reference_pitch_hz * (2**-5) # Start from C-1 (approx 16.35 Hz)
-            while current_freq < max_freq_view * 2:
-                if current_freq > min_freq_view / 2:
-                    major_ticks.append(current_freq)
-                current_freq *= 2
-            
-            # Convert major_ticks (Hz) to display_freqs (Hz) for setTicks
-            major_ticks_display = major_ticks
-            
-            # pyqtgraph expects ticks as a list of (value, string) for major, and list of values for minor
-            # We are using custom_y_tick_strings for string formatting, so we just provide values here.
-            # The setTicks method takes a list of lists: [[(value, string), ...], [(value, string), ...]]
-            # For Hz mode, we want the default tick string behavior, so we don't use custom_y_tick_strings here.
-            # We can just pass the values and let pyqtgraph format them, or explicitly format them.
-            # Let's explicitly format them for clarity.
-            self.left_axis.setTicks([[(v, f"{v:.0f}") for v in major_ticks_display]])
+            # Provide a simple default tick string formatter for Hz mode
+            self.left_axis.tickStrings = lambda values, scale, spacing: [f"{v:.0f}" for v in values]
+            # Allow pyqtgraph to generate default Hz ticks
+            self.left_axis.setTicks(None) # Pass None to reset to default tick generation
 
 
         elif self.y_axis_mode == "Cents": # Only Cents mode remains
             self.setLabel('left', 'Cents', units='Cents (re: C4)')
             self.getAxis('left').setLogMode(False)
+            # Set custom tick string formatter for Cents mode
+            self.left_axis.tickStrings = self.custom_y_tick_strings
             # Set custom ticks for Cents mode (10-base emphasis)
             major_ticks = []
             minor_ticks = []
