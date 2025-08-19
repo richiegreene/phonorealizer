@@ -79,12 +79,26 @@ class MainWindow(QMainWindow):
         batch_edit_action.triggered.connect(self.batch_edit)
         self.toolbar.addAction(batch_edit_action)
 
+        # New: Y-axis Display Mode Toggle
+        self.y_axis_mode_action = QAction("Log Scale", self)
+        self.y_axis_mode_action.setCheckable(True)
+        self.y_axis_mode_action.setChecked(False) # Default to linear (Hz)
+        self.y_axis_mode_action.triggered.connect(self.toggle_y_axis_mode)
+        self.toolbar.addAction(self.y_axis_mode_action)
+
     def set_tool(self, tool):
         self.plot.tool_mode = tool
         is_view_mode = tool == 'view'
         self.plot.getViewBox().setMouseEnabled(x=is_view_mode, y=is_view_mode)
         for t, a in self.tool_actions.items():
             a.setChecked(t == tool)
+
+    # New method
+    def toggle_y_axis_mode(self):
+        if self.y_axis_mode_action.isChecked():
+            self.plot.set_y_axis_mode("Cents", 261.6256) # Fixed reference pitch
+        else:
+            self.plot.set_y_axis_mode("Hz", 261.6256) # Reference pitch doesn't matter for Hz
 
     def open_csv(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open Harmonic CSV", "", "CSV Files (*.csv)")
@@ -136,17 +150,6 @@ class MainWindow(QMainWindow):
         dlg = BatchEditDialog(self)
         if dlg.exec() == QDialog.Accepted:
             edits = dlg.get_data()
-            
-            # Update Y-axis display mode if selected
-            y_axis_mode = edits.get('y_axis_mode')
-            reference_pitch_str = edits.get('ref_pitch')
-            
-            if y_axis_mode:
-                try:
-                    reference_pitch_hz = float(reference_pitch_str)
-                    self.plot.set_y_axis_mode(y_axis_mode, reference_pitch_hz)
-                except ValueError:
-                    QMessageBox.warning(self, "Invalid Input", "Reference Pitch must be a valid number.")
             
             self.harmonic_editor.apply_batch_edits(self.plot.selected_points, edits)
             self.plot.plot_harmonics(self.data)

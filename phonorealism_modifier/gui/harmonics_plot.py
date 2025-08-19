@@ -55,8 +55,12 @@ class HarmonicsPlot(pg.PlotWidget):
         self.getViewBox().setMouseEnabled(x=False, y=False)
         self.setMenuEnabled(False)
         self.getAxis('left').setLogMode(False)
-        self.y_axis_mode = "Hz" # "Hz", "Octaves", "Cents"
+        self.y_axis_mode = "Hz" # "Hz", "Cents"
         self.reference_pitch_hz = 261.6256 # Middle C
+
+        # Custom tick string formatter for Cents mode
+        self.left_axis = self.getAxis('left')
+        self.left_axis.tickStrings = self.custom_y_tick_strings
 
     def set_y_axis_mode(self, mode: str, reference_pitch_hz: float):
         self.y_axis_mode = mode
@@ -67,10 +71,7 @@ class HarmonicsPlot(pg.PlotWidget):
         if self.y_axis_mode == "Hz":
             self.setLabel('left', 'Frequency', units='Hz')
             self.getAxis('left').setLogMode(False)
-        elif self.y_axis_mode == "Octaves":
-            self.setLabel('left', 'Octaves', units='Octaves (re: C4)')
-            self.getAxis('left').setLogMode(False) # Log mode is not directly for octaves/cents, but for log scale
-        elif self.y_axis_mode == "Cents":
+        elif self.y_axis_mode == "Cents": # Only Cents mode remains
             self.setLabel('left', 'Cents', units='Cents (re: C4)')
             self.getAxis('left').setLogMode(False)
         
@@ -101,9 +102,7 @@ class HarmonicsPlot(pg.PlotWidget):
             freqs[freqs <= 0] = 1 # Ensure frequencies are positive for log calculations
 
             # Apply Y-axis transformation
-            if self.y_axis_mode == "Octaves":
-                display_freqs = self._hz_to_octaves(freqs, self.reference_pitch_hz)
-            elif self.y_axis_mode == "Cents":
+            if self.y_axis_mode == "Cents": # Only Cents mode remains
                 display_freqs = self._hz_to_cents(freqs, self.reference_pitch_hz)
             else: # Hz mode
                 display_freqs = freqs
@@ -330,6 +329,19 @@ class HarmonicsPlot(pg.PlotWidget):
 
     def _hz_to_cents(self, hz, reference_hz):
         return 1200 * np.log2(hz / reference_hz)
+
+    def custom_y_tick_strings(self, values, scale, spacing):
+        strings = []
+        if self.y_axis_mode == "Cents":
+            # C4 is 0 cents. Each octave is 1200 cents.
+            # So, 1200 cents = C5, 2400 cents = C6, -1200 cents = C3, etc.
+            for v in values:
+                octave_offset = round(v / 1200.0) # Calculate octave offset from C4
+                c_note_octave = 4 + octave_offset # C4 is octave 4
+                strings.append(f"C{c_note_octave}")
+        else: # Hz mode
+            strings = [f"{v:.0f}" for v in values] # Default Hz labeling
+        return strings
 
     
 
