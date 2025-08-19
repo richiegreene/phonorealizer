@@ -29,7 +29,7 @@ class AudioPlayer(QObject):
         current_position = self.media_player.position()
         
         # If data is dirty, always re-synthesize
-        if harmonic_data.dirty:
+        if harmonic_data.is_modified():
             self._start_playback(harmonic_data, play_action_widget, start_position=current_position)
             return
 
@@ -79,7 +79,7 @@ class AudioPlayer(QObject):
 
         try:
             synthesize_from_partials(partials_data, sr, output_path, duration)
-            harmonic_data.dirty = False # Mark data as clean
+            harmonic_data.reset_modified() # Mark data as clean
             
             # Disconnect old status connection if any, to avoid multiple triggers
             try:
