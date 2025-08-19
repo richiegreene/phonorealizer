@@ -69,19 +69,21 @@ class Exporter:
         return 10 ** (db / 20)
 
     def export_svg_melody(self, svg_settings, output_path):
+        render_mode = 'line' if svg_settings['line'] else 'amplitude' # Determine render mode
+
         if svg_settings['full']:
             if svg_settings['lin']:
-                self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', **svg_settings)
+                self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', render_mode=render_mode, **svg_settings)
             if svg_settings['log']:
-                self._save_full_svg(self.data.get_harmonics(), output_path + '_log.svg', scale='log', **svg_settings)
+                self._save_full_svg(self.data.get_harmonics(), output_path + '_log.svg', scale='log', render_mode=render_mode, **svg_settings)
         if svg_settings['parts']:
             output_dir = os.path.splitext(output_path)[0] + "_melody_partials"
             os.makedirs(output_dir, exist_ok=True)
             for i, partial in enumerate(self.data.get_harmonics()):
                 if svg_settings['lin']:
-                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_lin.svg"), scale='lin', **svg_settings)
+                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_lin.svg"), scale='lin', render_mode=render_mode, **svg_settings)
                 if svg_settings['log']:
-                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_log.svg"), scale='log', **svg_settings)
+                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_log.svg"), scale='log', render_mode=render_mode, **svg_settings)
 
     def export_svg_waveform(self, svg_settings, output_path):
         if svg_settings['full']:
