@@ -71,10 +71,67 @@ class HarmonicsPlot(pg.PlotWidget):
         if self.y_axis_mode == "Hz":
             self.setLabel('left', 'Frequency', units='Hz')
             self.getAxis('left').setLogMode(False)
+            # Set custom ticks for Hz mode (octave emphasis)
+            major_ticks = []
+            
+            # Get the visible range of the plot
+            view_range = self.plotItem.getViewBox().viewRange()[1] # Y-axis range
+            min_freq_view = 10**(view_range[0]) # Assuming log scale for view range
+            max_freq_view = 10**(view_range[1])
+
+            # Generate octave frequencies around the visible range
+            # Start from a low C note and go up by octaves
+            current_freq = self.reference_pitch_hz * (2**-5) # Start from C-1 (approx 16.35 Hz)
+            while current_freq < max_freq_view * 2:
+                if current_freq > min_freq_view / 2:
+                    major_ticks.append(current_freq)
+                current_freq *= 2
+            
+            # Convert major_ticks (Hz) to display_freqs (Hz) for setTicks
+            major_ticks_display = major_ticks
+            
+            # pyqtgraph expects ticks as a list of (value, string) for major, and list of values for minor
+            # We are using custom_y_tick_strings for string formatting, so we just provide values here.
+            # The setTicks method takes a list of lists: [[(value, string), ...], [(value, string), ...]]
+            # For Hz mode, we want the default tick string behavior, so we don't use custom_y_tick_strings here.
+            # We can just pass the values and let pyqtgraph format them, or explicitly format them.
+            # Let's explicitly format them for clarity.
+            self.left_axis.setTicks([[(v, f"{v:.0f}") for v in major_ticks_display]])
+
+
         elif self.y_axis_mode == "Cents": # Only Cents mode remains
             self.setLabel('left', 'Cents', units='Cents (re: C4)')
             self.getAxis('left').setLogMode(False)
-        
+            # Set custom ticks for Cents mode (10-base emphasis)
+            major_ticks = []
+            minor_ticks = []
+
+            # Get the visible range in cents
+            view_range = self.plotItem.getViewBox().viewRange()[1] # Y-axis range
+            min_cent = view_range[0]
+            max_cent = view_range[1]
+
+            # Generate major ticks at 1200-cent intervals (octaves)
+            start_octave_cent = np.floor(min_cent / 1200.0) * 1200
+            current_cent = start_octave_cent
+            while current_cent < max_cent + 1200:
+                major_ticks.append(current_cent)
+                current_cent += 1200
+            
+            # Generate minor ticks at 100-cent intervals
+            start_100_cent = np.floor(min_cent / 100.0) * 100
+            current_100_cent = start_100_cent
+            while current_100_cent < max_cent + 100:
+                # Only add if it's not a major tick (to avoid duplication)
+                if not any(abs(current_100_cent - mt) < 1 for mt in major_ticks): # Check for near equality
+                    minor_ticks.append(current_100_cent)
+                current_100_cent += 100
+
+            # pyqtgraph expects ticks as a list of (value, string) for major, and list of values for minor
+            # We use custom_y_tick_strings to get the strings for both major and minor ticks.
+            self.left_axis.setTicks([[(v, self.custom_y_tick_strings([v], None, None)[0]) for v in major_ticks],
+                                     [(v, self.custom_y_tick_strings([v], None, None)[0]) for v in minor_ticks]])
+
         # Replot the data with the new axis settings
         if self.data: # Only replot if data exists
             self.plot_harmonics(self.data)
@@ -333,12 +390,31 @@ class HarmonicsPlot(pg.PlotWidget):
     def custom_y_tick_strings(self, values, scale, spacing):
         strings = []
         if self.y_axis_mode == "Cents":
-            # C4 is 0 cents. Each octave is 1200 cents.
-            # So, 1200 cents = C5, 2400 cents = C6, -1200 cents = C3, etc.
             for v in values:
-                octave_offset = round(v / 1200.0) # Calculate octave offset from C4
-                c_note_octave = 4 + octave_offset # C4 is octave 4
-                strings.append(f"C{c_note_octave}")
+                # Calculate the base octave (e.g., C4, C5, etc.)
+                # Use floor division to consistently get the octave below or at the value
+                octave_from_c4 = np.floor(v / 1200.0)
+                
+                # Calculate cents relative to the *start* of the current octave
+                cents_in_octave = v - (octave_from_c4 * 1200)
+                
+                # Ensure cents_in_octave is always within [0, 1200)
+                cents_in_octave = cents_in_octave % 1200
+                if cents_in_octave < 0:
+                    cents_in_octave += 1200
+
+                c_note_octave = 4 + int(octave_from_c4) # C4 is octave 4
+                
+                # Determine if it's a C note (within a small tolerance)
+                # Check if it's close to 0 cents or 1200 cents (which is the next C)
+                if abs(cents_in_octave) < 5 or abs(cents_in_octave - 1200) < 5: # Tolerance of 5 cents
+                    # If it's near 1200 cents, it means it's the next C note
+                    if abs(cents_in_octave - 1200) < 5:
+                        c_note_octave += 1
+                    strings.append(f"C{c_note_octave}")
+                else:
+                    # For other notes, display C note and cents
+                    strings.append(f"C{c_note_octave} + {int(cents_in_octave)}c")
         else: # Hz mode
             strings = [f"{v:.0f}" for v in values] # Default Hz labeling
         return strings
