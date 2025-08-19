@@ -52,9 +52,9 @@ class ExportDialog(QDialog):
         self.svg_melody_export_checkbox.stateChanged.connect(self.toggle_svg_melody_options)
         self.svg_melody_layout.addWidget(self.svg_melody_export_checkbox)
 
-        self.svg_melody_lin_checkbox = QCheckBox("Lin")
+        self.svg_melody_lin_checkbox = QCheckBox("Log")
         self.svg_melody_lin_checkbox.setChecked(True) # Set to checked by default
-        self.svg_melody_log_checkbox = QCheckBox("Log")
+        self.svg_melody_log_checkbox = QCheckBox("Lin")
         self.svg_melody_full_checkbox = QCheckBox("Full")
         self.svg_melody_full_checkbox.setChecked(True) # Set to checked by default
         self.svg_melody_parts_checkbox = QCheckBox("Parts")

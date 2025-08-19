@@ -73,9 +73,9 @@ class Exporter:
 
         if svg_settings['full']:
             if svg_settings['lin']:
-                self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', render_mode=render_mode, **svg_settings)
-            if svg_settings['log']:
                 self._save_full_svg(self.data.get_harmonics(), output_path + '_log.svg', scale='log', render_mode=render_mode, **svg_settings)
+            if svg_settings['log']:
+                self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', render_mode=render_mode, **svg_settings)
         if svg_settings['parts']:
             output_dir = os.path.splitext(output_path)[0] + "_melody_partials"
             os.makedirs(output_dir, exist_ok=True)
