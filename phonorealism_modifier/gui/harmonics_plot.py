@@ -55,6 +55,28 @@ class HarmonicsPlot(pg.PlotWidget):
         self.getViewBox().setMouseEnabled(x=False, y=False)
         self.setMenuEnabled(False)
         self.getAxis('left').setLogMode(False)
+        self.y_axis_mode = "Hz" # "Hz", "Octaves", "Cents"
+        self.reference_pitch_hz = 261.6256 # Middle C
+
+    def set_y_axis_mode(self, mode: str, reference_pitch_hz: float):
+        self.y_axis_mode = mode
+        self.reference_pitch_hz = reference_pitch_hz
+        self.update_y_axis_display() # Call a new method to update axis and replot
+
+    def update_y_axis_display(self):
+        if self.y_axis_mode == "Hz":
+            self.setLabel('left', 'Frequency', units='Hz')
+            self.getAxis('left').setLogMode(False)
+        elif self.y_axis_mode == "Octaves":
+            self.setLabel('left', 'Octaves', units='Octaves (re: C4)')
+            self.getAxis('left').setLogMode(False) # Log mode is not directly for octaves/cents, but for log scale
+        elif self.y_axis_mode == "Cents":
+            self.setLabel('left', 'Cents', units='Cents (re: C4)')
+            self.getAxis('left').setLogMode(False)
+        
+        # Replot the data with the new axis settings
+        if self.data: # Only replot if data exists
+            self.plot_harmonics(self.data)
 
     def clear_plot(self):
         for item in self.harmonic_curves + self.scatter_items:
@@ -76,20 +98,29 @@ class HarmonicsPlot(pg.PlotWidget):
         for idx, group in self.data.grouped.items():
             times = group['time'].values
             freqs = group['frequency'].values
-            freqs[freqs <= 0] = 1
+            freqs[freqs <= 0] = 1 # Ensure frequencies are positive for log calculations
+
+            # Apply Y-axis transformation
+            if self.y_axis_mode == "Octaves":
+                display_freqs = self._hz_to_octaves(freqs, self.reference_pitch_hz)
+            elif self.y_axis_mode == "Cents":
+                display_freqs = self._hz_to_cents(freqs, self.reference_pitch_hz)
+            else: # Hz mode
+                display_freqs = freqs
+            
             amps = group['amplitude'].values
             
             norm_amps = (amps - self.min_amp) / (self.max_amp - self.min_amp + 1e-9)
             color = [self.cmap.map(np.clip(a, 0, 1), mode='qcolor') for a in norm_amps]
             
-            curve = pg.PlotDataItem(times, freqs, pen=pg.mkPen(color=color[-1], width=2))
+            curve = pg.PlotDataItem(times, display_freqs, pen=pg.mkPen(color=color[-1], width=2)) # Use display_freqs
             self.addItem(curve)
             self.harmonic_curves.append(curve)
             
             group_data = group.reset_index().to_dict('records')
 
-            scatter = pg.ScatterPlotItem(times, freqs, pen=None, brush=color, size=8,
-                                         data=group_data)
+            scatter = pg.ScatterPlotItem(times, display_freqs, pen=None, brush=color, size=8,
+                                         data=group_data) # Use display_freqs
             self.addItem(scatter)
             self.scatter_items.append(scatter)
         self.autoRange()
@@ -293,6 +324,12 @@ class HarmonicsPlot(pg.PlotWidget):
         p1 = vb.mapSceneToView(QPointF(0,0))
         p2 = vb.mapSceneToView(QPointF(pixel_radius,0))
         return abs(p2.x()-p1.x())
+
+    def _hz_to_octaves(self, hz, reference_hz):
+        return np.log2(hz / reference_hz)
+
+    def _hz_to_cents(self, hz, reference_hz):
+        return 1200 * np.log2(hz / reference_hz)
 
     
 

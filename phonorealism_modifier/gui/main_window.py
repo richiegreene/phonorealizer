@@ -136,6 +136,18 @@ class MainWindow(QMainWindow):
         dlg = BatchEditDialog(self)
         if dlg.exec() == QDialog.Accepted:
             edits = dlg.get_data()
+            
+            # Update Y-axis display mode if selected
+            y_axis_mode = edits.get('y_axis_mode')
+            reference_pitch_str = edits.get('ref_pitch')
+            
+            if y_axis_mode:
+                try:
+                    reference_pitch_hz = float(reference_pitch_str)
+                    self.plot.set_y_axis_mode(y_axis_mode, reference_pitch_hz)
+                except ValueError:
+                    QMessageBox.warning(self, "Invalid Input", "Reference Pitch must be a valid number.")
+            
             self.harmonic_editor.apply_batch_edits(self.plot.selected_points, edits)
             self.plot.plot_harmonics(self.data)
 

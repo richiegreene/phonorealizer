@@ -1,7 +1,7 @@
 from fractions import Fraction
 import numpy as np
 from PySide6.QtWidgets import (
-    QDialog, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QCheckBox
+    QDialog, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QCheckBox, QComboBox # Added QComboBox
 )
 import pyqtgraph as pg
 
