@@ -187,7 +187,6 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Deleted {num_deleted} points.", 2000)
 
     def keyPressEvent(self, event):
-        print(f"Key pressed: {event.key()}, Modifiers: {event.modifiers()}")
         # Check for platform-specific modifiers (Cmd on macOS, Ctrl on others)
         is_modifier_pressed = (event.modifiers() & Qt.ControlModifier) or (event.modifiers() & Qt.MetaModifier)
 
@@ -210,6 +209,16 @@ class MainWindow(QMainWindow):
             self.paste_harmonics()
         elif event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace:
             self.delete_selected_harmonics()
+        elif event.key() == Qt.Key_V:
+            self.set_tool('view')
+        elif event.key() == Qt.Key_B:
+            self.set_tool('box')
+        elif event.key() == Qt.Key_L:
+            self.set_tool('lasso')
+        elif event.key() == Qt.Key_S:
+            self.set_tool('select_partial')
+        elif event.key() == Qt.Key_E:
+            self.batch_edit()
         else:
             super().keyPressEvent(event)
 
