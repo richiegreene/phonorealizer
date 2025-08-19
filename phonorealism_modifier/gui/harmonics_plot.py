@@ -210,7 +210,7 @@ class HarmonicsPlot(pg.PlotWidget):
             for spot in newly_affected:
                 if spot not in self.selected_points:
                     self.selected_points.append(spot)
-        self.update_point_highlight()
+        self.update_selection_visuals()
 
     def lasso_select(self, polygon, clear_selection: bool = True, remove_from_selection: bool = False):
         if len(polygon) < 3:
@@ -233,9 +233,9 @@ class HarmonicsPlot(pg.PlotWidget):
             for spot in newly_affected:
                 if spot not in self.selected_points:
                     self.selected_points.append(spot)
-        self.update_point_highlight()
+        self.update_selection_visuals()
 
-    def update_point_highlight(self):
+    def update_selection_visuals(self):
         for scatter in self.scatter_items:
             for spot in scatter.points():
                 if spot in self.selected_points:
@@ -282,7 +282,7 @@ class HarmonicsPlot(pg.PlotWidget):
                         if p not in self.selected_points:
                             self.selected_points.append(p)
             
-            self.update_point_highlight()
+            self.update_selection_visuals()
 
     def update_playback_marker(self, time_position):
         self.playback_marker.setPos(time_position)

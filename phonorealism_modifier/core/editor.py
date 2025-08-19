@@ -1,9 +1,94 @@
 from fractions import Fraction
 import numpy as np
 
+import numpy as np
+
 class HarmonicEditor:
     def __init__(self, harmonic_data):
         self.data = harmonic_data
+
+    def select_all(self):
+        if self.data.df is None:
+            return []
+        return list(self.data.df.index)
+
+    def invert_selection(self, selected_indices):
+        if self.data.df is None:
+            return []
+        all_indices = set(self.data.df.index)
+        selected_set = set(selected_indices)
+        inverted_indices = list(all_indices - selected_set)
+        return inverted_indices
+
+    def select_by_criteria(self, partial_str, time_str, current_selection):
+        if self.data.df is None:
+            return []
+
+        partial_indices = self._parse_partial_string(partial_str)
+        time_indices = self._parse_time_string(time_str)
+
+        if partial_indices is not None and time_indices is not None:
+            selection = partial_indices.intersection(time_indices)
+        elif partial_indices is not None:
+            selection = partial_indices
+        elif time_indices is not None:
+            selection = time_indices
+        else:
+            selection = set(self.data.df.index)
+
+        return list(selection)
+
+    def _parse_partial_string(self, p_str):
+        if not p_str:
+            return None
+
+        indices = set()
+        parts = p_str.split(',')
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            if part.lower() == 'odd':
+                indices.update(self.data.df[self.data.df['harmonic_index'] % 2 != 0].index)
+            elif part.lower() == 'even':
+                indices.update(self.data.df[self.data.df['harmonic_index'] % 2 == 0].index)
+            elif '-' in part:
+                start, end = part.split('-')
+                try:
+                    start = int(start.strip())
+                    end = int(end.strip())
+                    for i in range(start, end + 1):
+                        indices.update(self.data.df[self.data.df['harmonic_index'] == i].index)
+                except ValueError:
+                    pass  # Ignore malformed ranges
+            else:
+                try:
+                    val = int(part)
+                    indices.update(self.data.df[self.data.df['harmonic_index'] == val].index)
+                except ValueError:
+                    pass  # Ignore malformed numbers
+        return indices
+
+    def _parse_time_string(self, t_str):
+        if not t_str:
+            return None
+
+        final_indices = set()
+        parts = t_str.split(',')
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+            if '-' in part:
+                start, end = part.split('-')
+                try:
+                    start_time = float(start.strip())
+                    end_time = float(end.strip())
+                    mask = (self.data.df['time'] >= start_time) & (self.data.df['time'] <= end_time)
+                    final_indices.update(self.data.df[mask].index)
+                except ValueError:
+                    pass  # Ignore malformed ranges
+        return final_indices
 
     def apply_batch_edits(self, selected_points, edits):
         if not selected_points:

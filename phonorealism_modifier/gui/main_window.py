@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (
     QMessageBox, QDialog, QInputDialog # Added QInputDialog
 )
 from PySide6.QtGui import QAction, QKeySequence
+from gui.selection_dialog import SelectionDialog
 from PySide6.QtCore import Qt
 
 from core.io import HarmonicData
@@ -77,6 +78,10 @@ class MainWindow(QMainWindow):
             act.triggered.connect(partial(self.set_tool, tool))
             self.toolbar.addAction(act)
             self.tool_actions[tool] = act
+
+        define_action = QAction("Define", self)
+        define_action.triggered.connect(self.open_define_selection_dialog)
+        self.toolbar.addAction(define_action)
 
         batch_edit_action = QAction("Edit Selected", self)
         batch_edit_action.triggered.connect(self.batch_edit)
@@ -278,11 +283,69 @@ class MainWindow(QMainWindow):
         self.plot.plot_harmonics(self.data)
         self.statusBar().showMessage(f"Deleted {num_deleted} points.", 2000)
 
+    def open_define_selection_dialog(self):
+        dlg = SelectionDialog(self, self)
+        if dlg.exec():
+            values = dlg.get_values()
+            self.apply_defined_selection(values)
+
+    def apply_defined_selection(self, values):
+        if self.data.df is None or self.data.df.empty:
+            self.statusBar().showMessage("No data loaded.", 2000)
+            return
+
+        partial_str = values.get("partial")
+        time_str = values.get("time")
+
+        selected_indices = self.harmonic_editor.select_by_criteria(
+            partial_str, time_str, [p.data()['index'] for p in self.plot.selected_points]
+        )
+        
+        new_selection = []
+        for scatter in self.plot.scatter_items:
+            for spot in scatter.points():
+                if spot.data()['index'] in selected_indices:
+                    new_selection.append(spot)
+
+        self.plot.selected_points = new_selection
+        self.plot.update_selection_visuals()
+        self.statusBar().showMessage(f"{len(new_selection)} points selected.", 2000)
+
+    def select_all_harmonics(self):
+        if self.data.df is None or self.data.df.empty:
+            self.statusBar().showMessage("No data loaded.", 2000)
+            return
+        selected_indices = self.harmonic_editor.select_all()
+        new_selection = []
+        for scatter in self.plot.scatter_items:
+            for spot in scatter.points():
+                if spot.data()['index'] in selected_indices:
+                    new_selection.append(spot)
+        self.plot.selected_points = new_selection
+        self.plot.update_selection_visuals()
+        self.statusBar().showMessage(f"{len(self.plot.selected_points)} points selected.", 2000)
+
+    def invert_selection(self):
+        if self.data.df is None or self.data.df.empty:
+            self.statusBar().showMessage("No data loaded.", 2000)
+            return
+        selected_indices = self.harmonic_editor.invert_selection([p.data()['index'] for p in self.plot.selected_points])
+        new_selection = []
+        for scatter in self.plot.scatter_items:
+            for spot in scatter.points():
+                if spot.data()['index'] in selected_indices:
+                    new_selection.append(spot)
+        self.plot.selected_points = new_selection
+        self.plot.update_selection_visuals()
+        self.statusBar().showMessage(f"{len(self.plot.selected_points)} points selected.", 2000)
+
     def keyPressEvent(self, event):
         # Check for platform-specific modifiers (Cmd on macOS, Ctrl on others)
         is_modifier_pressed = (event.modifiers() & Qt.ControlModifier) or (event.modifiers() & Qt.MetaModifier)
 
-        if event.key() == Qt.Key_I:
+        if is_modifier_pressed and event.key() == Qt.Key_A:
+            self.select_all_harmonics()
+        elif event.key() == Qt.Key_I:
             self.set_marker_mode = not self.set_marker_mode
             if self.set_marker_mode:
                 QApplication.setOverrideCursor(Qt.CrossCursor)
