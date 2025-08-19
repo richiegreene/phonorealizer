@@ -80,7 +80,7 @@ class MainWindow(QMainWindow):
         self.toolbar.addAction(batch_edit_action)
 
         # New: Y-axis Display Mode Toggle
-        self.y_axis_mode_action = QAction("Log Scale", self)
+        self.y_axis_mode_action = QAction("Log", self)
         self.y_axis_mode_action.setCheckable(True)
         self.y_axis_mode_action.setChecked(False) # Default to linear (Hz)
         self.y_axis_mode_action.triggered.connect(self.toggle_y_axis_mode)
@@ -97,8 +97,10 @@ class MainWindow(QMainWindow):
     def toggle_y_axis_mode(self):
         if self.y_axis_mode_action.isChecked():
             self.plot.set_y_axis_mode("Cents", 261.6256) # Fixed reference pitch
+            self.y_axis_mode_action.setText("Log")
         else:
             self.plot.set_y_axis_mode("Hz", 261.6256) # Reference pitch doesn't matter for Hz
+            self.y_axis_mode_action.setText("Lin")
 
     def open_csv(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open Harmonic CSV", "", "CSV Files (*.csv)")
