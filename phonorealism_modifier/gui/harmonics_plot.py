@@ -78,7 +78,7 @@ class HarmonicsPlot(pg.PlotWidget):
 
 
         elif self.y_axis_mode == "Cents": # Only Cents mode remains
-            self.setLabel('left', 'Cents', units='Cents (re: C4)')
+            self.setLabel('left', 'Cents', units='')
             self.getAxis('left').setLogMode(False)
             # Set custom tick string formatter for Cents mode
             self.left_axis.tickStrings = self.custom_y_tick_strings
