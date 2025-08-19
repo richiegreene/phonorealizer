@@ -181,6 +181,38 @@ class HarmonicsPlot(pg.PlotWidget):
             self.scatter_items.append(scatter)
         self.autoRange()
 
+    def custom_y_tick_strings(self, values, scale, spacing):
+        strings = []
+        if self.y_axis_mode == "Cents":
+            for v in values:
+                # Calculate the base octave (e.g., C4, C5, etc.)
+                # Use floor division to consistently get the octave below or at the value
+                octave_from_c4 = np.floor(v / 1200.0)
+                
+                # Calculate cents relative to the *start* of the current octave
+                cents_in_octave = v - (octave_from_c4 * 1200)
+                
+                # Ensure cents_in_octave is always within [0, 1200)
+                cents_in_octave = cents_in_octave % 1200
+                if cents_in_octave < 0:
+                    cents_in_octave += 1200
+
+                c_note_octave = 4 + int(octave_from_c4) # C4 is octave 4
+                
+                # Determine if it's a C note (within a small tolerance)
+                # Check if it's close to 0 cents or 1200 cents (which is the next C)
+                if abs(cents_in_octave) < 5 or abs(cents_in_octave - 1200) < 5: # Tolerance of 5 cents
+                    # If it's near 1200 cents, it means it's the next C note
+                    if abs(cents_in_octave - 1200) < 5:
+                        c_note_octave += 1
+                    strings.append(f"C{_to_subscript(c_note_octave)}")
+                else:
+                    # For other notes, display C note and cents
+                    strings.append(f"{int(cents_in_octave)}")
+        else: # Hz mode
+            strings = [f"{v:.0f}" for v in values] # Default Hz labeling
+        return strings
+
     def box_select(self, rect: QRectF, clear_selection: bool = True, remove_from_selection: bool = False):
         if clear_selection:
             self.selected_points.clear()
@@ -387,37 +419,8 @@ class HarmonicsPlot(pg.PlotWidget):
     def _hz_to_cents(self, hz, reference_hz):
         return 1200 * np.log2(hz / reference_hz)
 
-    def custom_y_tick_strings(self, values, scale, spacing):
-        strings = []
-        if self.y_axis_mode == "Cents":
-            for v in values:
-                # Calculate the base octave (e.g., C4, C5, etc.)
-                # Use floor division to consistently get the octave below or at the value
-                octave_from_c4 = np.floor(v / 1200.0)
-                
-                # Calculate cents relative to the *start* of the current octave
-                cents_in_octave = v - (octave_from_c4 * 1200)
-                
-                # Ensure cents_in_octave is always within [0, 1200)
-                cents_in_octave = cents_in_octave % 1200
-                if cents_in_octave < 0:
-                    cents_in_octave += 1200
-
-                c_note_octave = 4 + int(octave_from_c4) # C4 is octave 4
-                
-                # Determine if it's a C note (within a small tolerance)
-                # Check if it's close to 0 cents or 1200 cents (which is the next C)
-                if abs(cents_in_octave) < 5 or abs(cents_in_octave - 1200) < 5: # Tolerance of 5 cents
-                    # If it's near 1200 cents, it means it's the next C note
-                    if abs(cents_in_octave - 1200) < 5:
-                        c_note_octave += 1
-                    strings.append(f"C{c_note_octave}")
-                else:
-                    # For other notes, display C note and cents
-                    strings.append(f"C{c_note_octave} + {int(cents_in_octave)}c")
-        else: # Hz mode
-            strings = [f"{v:.0f}" for v in values] # Default Hz labeling
-        return strings
+def _to_subscript(num):
+    return "".join(chr(0x2080 + int(digit)) for digit in str(num))
 
     
 
