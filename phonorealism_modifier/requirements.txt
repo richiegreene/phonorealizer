@@ -3,3 +3,7 @@ pandas
 PySide6
 pyqtgraph
 matplotlib
+librosa
+soundfile
+svgwrite
+scipy

@@ -1,7 +1,10 @@
 from functools import partial
 import os
 import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))) # Add project root to path
+
 import pandas as pd # Added import
+from phonorealism_extractor.core.analyzer import analyze_audio # New import
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QToolBar,
@@ -105,34 +108,97 @@ class MainWindow(QMainWindow):
             self.plot.set_y_axis_mode("Hz", 261.6256) # Reference pitch doesn't matter for Hz
             self.y_axis_mode_action.setText("Log") # Button should now say "Log"
 
-    def open_csv(self):
-        path, _ = QFileDialog.getOpenFileName(self, "Open Harmonic CSV", "", "CSV Files (*.csv)")
-        if not path:
-            return
+    def _process_audio_file(self, file_path):
         try:
-            self.data.load_csv(path)
-            self.plot.plot_harmonics(self.data)
-            self.current_file_path = path
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            self.statusBar().showMessage("Analyzing audio, please wait...")
+            
+            # Analyze audio
+            partials_data = analyze_audio(file_path)
+
+            if not partials_data:
+                QMessageBox.warning(self, "Analysis Failed", "No harmonic data extracted from the audio file.")
+                return None
+
+            # Convert partials data to DataFrame
+            df_rows = []
+            for harmonic_index, harmonic_points in enumerate(partials_data):
+                for time, frequency, amplitude in harmonic_points:
+                    df_rows.append({
+                        'time': time,
+                        'harmonic_index': harmonic_index + 1, # Harmonic index is 1-based
+                        'frequency': frequency,
+                        'amplitude': amplitude
+                    })
+            
+            if not df_rows:
+                QMessageBox.warning(self, "Analysis Failed", "No data points generated from audio analysis.")
+                return None
+
+            new_df = pd.DataFrame(df_rows)
+            return new_df
+
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to load CSV:\n{e}")
+            QMessageBox.critical(self, "Error", f"Failed to process audio file: {e}")
+            return None
+        finally:
+            QApplication.restoreOverrideCursor()
+            self.statusBar().clearMessage()
 
-    def insert_csv(self): # This method will now use the generalized insert_data
-        if self.data.df is None or self.data.df.empty:
-            QMessageBox.warning(self, "No Data Loaded", "Please load an initial CSV file before inserting.")
-            return
-
-        path, _ = QFileDialog.getOpenFileName(self, "Insert Harmonic CSV", "", "CSV Files (*.csv)")
+    def open_csv(self):
+        file_filter = "All Supported Files (*.csv *.wav *.mp3 *.aif);;CSV Files (*.csv);;Audio Files (*.wav *.mp3 *.aif)"
+        path, _ = QFileDialog.getOpenFileName(self, "Open Harmonic Data", "", file_filter)
         if not path:
             return
+
+        file_extension = os.path.splitext(path)[1].lower()
+
+        try:
+            if file_extension in ['.wav', '.mp3', '.aif']:
+                df = self._process_audio_file(path)
+                if df is not None:
+                    self.data.load_dataframe(df) # Assuming HarmonicData has a load_dataframe method
+                    self.plot.plot_harmonics(self.data)
+                    self.current_file_path = path
+            elif file_extension == '.csv':
+                self.data.load_csv(path)
+                self.plot.plot_harmonics(self.data)
+                self.current_file_path = path
+            else:
+                QMessageBox.warning(self, "Unsupported File Type", "Selected file type is not supported.")
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to open file:\n{e}")
+
+    def insert_csv(self):
+        if self.data.df is None or self.data.df.empty:
+            QMessageBox.warning(self, "No Data Loaded", "Please load an initial file before inserting.")
+            return
+
+        file_filter = "All Supported Files (*.csv *.wav *.mp3 *.aif);;CSV Files (*.csv);;Audio Files (*.wav *.mp3 *.aif)"
+        path, _ = QFileDialog.getOpenFileName(self, "Insert Harmonic Data", "", file_filter)
+        if not path:
+            return
+
+        file_extension = os.path.splitext(path)[1].lower()
 
         try:
             insert_time = self.audio_player.media_player.position() / 1000.0
-            new_df = pd.read_csv(path)
-            self.data.insert_data(new_df, insert_time)
-            self.plot.plot_harmonics(self.data)
-            QMessageBox.information(self, "Success", f"CSV inserted at {insert_time:.2f} seconds.")
+            
+            if file_extension in ['.wav', '.mp3', '.aif']:
+                new_df = self._process_audio_file(path)
+                if new_df is not None:
+                    self.data.insert_data(new_df, insert_time)
+                    self.plot.plot_harmonics(self.data)
+                    QMessageBox.information(self, "Success", f"Audio data inserted at {insert_time:.2f} seconds.")
+            elif file_extension == '.csv':
+                new_df = pd.read_csv(path)
+                self.data.insert_data(new_df, insert_time)
+                self.plot.plot_harmonics(self.data)
+                QMessageBox.information(self, "Success", f"CSV inserted at {insert_time:.2f} seconds.")
+            else:
+                QMessageBox.warning(self, "Unsupported File Type", "Selected file type is not supported for insertion.")
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to insert CSV:\n{e}")
+            QMessageBox.critical(self, "Error", f"Failed to insert data:\n{e}")
 
     def save_csv(self):
         if hasattr(self, "current_file_path"):

@@ -14,6 +14,18 @@ class HarmonicData:
         self.grouped = {idx: group.sort_values('time') for idx, group in self.df.groupby('harmonic_index')}
         self.dirty = True
 
+    def load_dataframe(self, dataframe):
+        """
+        Loads a pandas DataFrame directly into the HarmonicData object.
+        Assumes the DataFrame has the required columns: 'time', 'harmonic_index', 'frequency', 'amplitude'.
+        """
+        self.df = dataframe
+        required_cols = {'time', 'harmonic_index', 'frequency', 'amplitude'}
+        if not required_cols.issubset(self.df.columns):
+            raise ValueError(f"DataFrame missing required columns: {required_cols - set(self.df.columns)}")
+        self.grouped = {idx: group.sort_values('time') for idx, group in self.df.groupby('harmonic_index')}
+        self.dirty = True
+
     def export_csv(self, filepath):
         if self.df is not None:
             self.df.to_csv(filepath, index=False)
