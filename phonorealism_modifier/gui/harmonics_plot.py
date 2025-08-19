@@ -17,6 +17,7 @@ class HarmonicsPlot(pg.PlotWidget):
         self.scatter_items = []
         self.data = None
         self.selected_points = []
+        self._shift_pressed = False # New: To store shift key state
         self.cmap = pg.colormap.get('inferno')
         self.min_amp = 0
         self.max_amp = 1
@@ -92,23 +93,35 @@ class HarmonicsPlot(pg.PlotWidget):
             self.scatter_items.append(scatter)
         self.autoRange()
 
-    def box_select(self, rect: QRectF):
-        self.selected_points.clear()
+    def box_select(self, rect: QRectF, clear_selection: bool = True):
+        if clear_selection:
+            self.selected_points.clear()
+        newly_selected = []
         for scatter in self.scatter_items:
             for spot in scatter.points():
                 if rect.contains(spot.pos()):
-                    self.selected_points.append(spot)
+                    newly_selected.append(spot)
+        # Add only unique points to selected_points
+        for spot in newly_selected:
+            if spot not in self.selected_points:
+                self.selected_points.append(spot)
         self.update_point_highlight()
 
-    def lasso_select(self, polygon):
+    def lasso_select(self, polygon, clear_selection: bool = True):
         if len(polygon) < 3:
             return
         poly_path = Path([(p.x(), p.y()) for p in polygon])
-        self.selected_points.clear()
+        if clear_selection:
+            self.selected_points.clear()
+        newly_selected = []
         for scatter in self.scatter_items:
             for spot in scatter.points():
                 if poly_path.contains_point((spot.pos().x(), spot.pos().y())):
-                    self.selected_points.append(spot)
+                    newly_selected.append(spot)
+        # Add only unique points to selected_points
+        for spot in newly_selected:
+            if spot not in self.selected_points:
+                self.selected_points.append(spot)
         self.update_point_highlight()
 
     def update_point_highlight(self):
@@ -119,7 +132,7 @@ class HarmonicsPlot(pg.PlotWidget):
                 else:
                     spot.setPen(None)
 
-    def select_partial(self, pos):
+    def select_partial(self, pos, clear_selection: bool = True):
         # Find the closest point to the click
         closest_spot = None
         min_dist_sq = float('inf')
@@ -132,14 +145,33 @@ class HarmonicsPlot(pg.PlotWidget):
                     closest_spot = spot
 
         if closest_spot:
-            # Get the harmonic_index of the closest point
             clicked_harmonic_index = closest_spot.data()['harmonic_index']
-            self.selected_points.clear()
-            # Select all points belonging to this harmonic_index
+            
+            if clear_selection:
+                self.selected_points.clear()
+            
+            # Collect points for this harmonic_index
+            harmonic_points = []
             for scatter in self.scatter_items:
                 for spot in scatter.points():
                     if spot.data()['harmonic_index'] == clicked_harmonic_index:
-                        self.selected_points.append(spot)
+                        harmonic_points.append(spot)
+            
+            # If shift is pressed, add/remove points. Otherwise, replace.
+            if not clear_selection: # Shift is pressed, so add/toggle
+                # Check if all points of this harmonic are already selected
+                all_selected = all(p in self.selected_points for p in harmonic_points)
+                if all_selected:
+                    # If all are selected, deselect them
+                    self.selected_points = [p for p in self.selected_points if p not in harmonic_points]
+                else:
+                    # Otherwise, add any unselected points from this harmonic
+                    for p in harmonic_points:
+                        if p not in self.selected_points:
+                            self.selected_points.append(p)
+            else: # No shift, replace selection
+                self.selected_points = harmonic_points
+            
             self.update_point_highlight()
 
     def update_playback_marker(self, time_position):
@@ -167,6 +199,7 @@ class HarmonicsPlot(pg.PlotWidget):
     def mousePressEvent(self, event):
         if event.button() == Qt.LeftButton:
             self._dragging = True
+            self._shift_pressed = bool(event.modifiers() & Qt.ShiftModifier) # Store shift state
             if self.tool_mode == 'box':
                 self._drag_start = self.plotItem.vb.mapSceneToView(event.position())
                 self.selection_rect.setRect(QRectF(self._drag_start, self._drag_start))
@@ -184,7 +217,7 @@ class HarmonicsPlot(pg.PlotWidget):
                 self.plot_clicked_signal.emit(pos.x())
             elif self.tool_mode == 'select_partial': # New condition
                 pos = self.plotItem.vb.mapSceneToView(event.position())
-                self.select_partial(pos)
+                self.select_partial(pos, clear_selection=not self._shift_pressed) # Pass shift state
                 self._dragging = False # This tool is a single click, not a drag
         super().mousePressEvent(event)
 
@@ -211,10 +244,10 @@ class HarmonicsPlot(pg.PlotWidget):
             if self._dragging:
                 if self.tool_mode == 'box':
                     rect = QRectF(self._drag_start, self.plotItem.vb.mapSceneToView(event.position())).normalized()
-                    self.box_select(rect)
+                    self.box_select(rect, clear_selection=not self._shift_pressed) # Pass shift state
                     self.selection_rect.setVisible(False)
                 elif self.tool_mode == 'lasso':
-                    self.lasso_select(self._lasso_points)
+                    self.lasso_select(self._lasso_points, clear_selection=not self._shift_pressed) # Pass shift state
                     self.lasso_path.setVisible(False)
                 elif self.tool_mode in ['smooth', 'dodge']:
                     end_pos = self.plotItem.vb.mapSceneToView(event.position())
@@ -228,6 +261,7 @@ class HarmonicsPlot(pg.PlotWidget):
             self._drag_start = None
             self._lasso_points = []
             self.preview_circle.setData([], [])
+            self._shift_pressed = False # Reset shift state after release
         super().mouseReleaseEvent(event)
 
     def pixel_to_plot_radius(self, pixel_radius):
