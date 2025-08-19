@@ -8,7 +8,7 @@ from phonorealism_extractor.core.analyzer import analyze_audio # New import
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QToolBar,
-    QMessageBox, QDialog
+    QMessageBox, QDialog, QInputDialog # Added QInputDialog
 )
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtCore import Qt
@@ -53,7 +53,7 @@ class MainWindow(QMainWindow):
         open_action.triggered.connect(self.open_csv)
         self.toolbar.addAction(open_action)
 
-        insert_action = QAction("Insert CSV", self) # New action
+        insert_action = QAction("Insert", self) # New action
         insert_action.triggered.connect(self.insert_csv) # Connect to new method
         self.toolbar.addAction(insert_action) # Add to toolbar
 
@@ -108,13 +108,13 @@ class MainWindow(QMainWindow):
             self.plot.set_y_axis_mode("Hz", 261.6256) # Reference pitch doesn't matter for Hz
             self.y_axis_mode_action.setText("Log") # Button should now say "Log"
 
-    def _process_audio_file(self, file_path):
+    def _process_audio_file(self, file_path, num_harmonics): # Added num_harmonics parameter
         try:
             QApplication.setOverrideCursor(Qt.WaitCursor)
             self.statusBar().showMessage("Analyzing audio, please wait...")
             
             # Analyze audio
-            partials_data = analyze_audio(file_path)
+            partials_data = analyze_audio(file_path, num_harmonics=num_harmonics)
 
             if not partials_data:
                 QMessageBox.warning(self, "Analysis Failed", "No harmonic data extracted from the audio file.")
@@ -155,9 +155,12 @@ class MainWindow(QMainWindow):
 
         try:
             if file_extension in ['.wav', '.mp3', '.aif']:
-                df = self._process_audio_file(path)
+                num_harmonics, ok = QInputDialog.getInt(self, "Number of Harmonics", "Enter the number of harmonic partials to analyze:", 32, 1, 128, 1)
+                if not ok:
+                    return # User cancelled
+                df = self._process_audio_file(path, num_harmonics) # Pass num_harmonics
                 if df is not None:
-                    self.data.load_dataframe(df) # Assuming HarmonicData has a load_dataframe method
+                    self.data.load_dataframe(df)
                     self.plot.plot_harmonics(self.data)
                     self.current_file_path = path
             elif file_extension == '.csv':
@@ -185,7 +188,10 @@ class MainWindow(QMainWindow):
             insert_time = self.audio_player.media_player.position() / 1000.0
             
             if file_extension in ['.wav', '.mp3', '.aif']:
-                new_df = self._process_audio_file(path)
+                num_harmonics, ok = QInputDialog.getInt(self, "Number of Harmonics", "Enter the number of harmonic partials to analyze:", 32, 1, 128, 1)
+                if not ok:
+                    return # User cancelled
+                new_df = self._process_audio_file(path, num_harmonics) # Pass num_harmonics
                 if new_df is not None:
                     self.data.insert_data(new_df, insert_time)
                     self.plot.plot_harmonics(self.data)
