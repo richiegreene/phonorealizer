@@ -7,7 +7,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QToolBar,
     QMessageBox, QDialog
 )
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtCore import Qt
 
 from core.io import HarmonicData
@@ -38,6 +38,7 @@ class MainWindow(QMainWindow):
         self.plot.plot_clicked_signal.connect(self.set_playback_position_from_plot)
 
         self.set_marker_mode = False # Flag for setting playback marker
+        self.clipboard_data = None # For copy/cut/paste
 
     def _init_ui(self):
         self.toolbar = QToolBar("Main Toolbar")
@@ -63,8 +64,7 @@ class MainWindow(QMainWindow):
 
         # Tool buttons
         self.tool_actions = {}
-        for tool in ['view', 'box', 'lasso', 'select_partial']: # Removed 'smooth', 'dodge', added 'circle'
-            # Special handling for 'select_partial' and 'circle' to display correctly
+        for tool in ['view', 'box', 'lasso', 'select_partial']:
             if tool == 'select_partial':
                 display_name = 'Select Partial'
             else:
@@ -97,7 +97,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to load CSV:\n{e}")
 
-    def insert_csv(self): # New method
+    def insert_csv(self): # This method will now use the generalized insert_data
         if self.data.df is None or self.data.df.empty:
             QMessageBox.warning(self, "No Data Loaded", "Please load an initial CSV file before inserting.")
             return
@@ -107,16 +107,9 @@ class MainWindow(QMainWindow):
             return
 
         try:
-            # Get current playback position as insert_time
-            insert_time = self.audio_player.media_player.position() / 1000.0 # Convert ms to seconds
-
-            # Load the new CSV into a temporary DataFrame
+            insert_time = self.audio_player.media_player.position() / 1000.0
             new_df = pd.read_csv(path)
-            required_cols = {'time', 'harmonic_index', 'frequency', 'amplitude'}
-            if not required_cols.issubset(new_df.columns):
-                raise ValueError(f"New CSV missing required columns: {required_cols - set(new_df.columns)}")
-
-            self.data.insert_csv_data(new_df, insert_time)
+            self.data.insert_data(new_df, insert_time)
             self.plot.plot_harmonics(self.data)
             QMessageBox.information(self, "Success", f"CSV inserted at {insert_time:.2f} seconds.")
         except Exception as e:
@@ -146,7 +139,58 @@ class MainWindow(QMainWindow):
             self.harmonic_editor.apply_batch_edits(self.plot.selected_points, edits)
             self.plot.plot_harmonics(self.data)
 
+    def copy_selected_harmonics(self):
+        if not self.plot.selected_points:
+            self.statusBar().showMessage("No points selected to copy.", 2000)
+            return
+        self.clipboard_data = self.data.get_selected_data(self.plot.selected_points)
+        if not self.clipboard_data.empty:
+            self.statusBar().showMessage(f"Copied {len(self.clipboard_data)} points.", 2000)
+        else:
+            self.statusBar().showMessage("No data copied.", 2000)
+
+    def cut_selected_harmonics(self):
+        if not self.plot.selected_points:
+            self.statusBar().showMessage("No points selected to cut.", 2000)
+            return
+        self.copy_selected_harmonics()
+        if not self.clipboard_data.empty:
+            self.data.delete_selected_data(self.plot.selected_points)
+            self.plot.selected_points.clear() # Clear selection after cutting
+            self.plot.plot_harmonics(self.data)
+            self.statusBar().showMessage(f"Cut {len(self.clipboard_data)} points.", 2000)
+        else:
+            self.statusBar().showMessage("No data cut.", 2000)
+
+    def paste_harmonics(self):
+        if self.clipboard_data is None or self.clipboard_data.empty:
+            self.statusBar().showMessage("No data in clipboard to paste.", 2000)
+            return
+        
+        insert_time = self.audio_player.media_player.position() / 1000.0
+        try:
+            self.data.insert_data(self.clipboard_data, insert_time)
+            self.plot.plot_harmonics(self.data)
+            self.statusBar().showMessage(f"Pasted {len(self.clipboard_data)} points at {insert_time:.2f}s.", 2000)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to paste data:\n{e}")
+
+    def delete_selected_harmonics(self):
+        if not self.plot.selected_points:
+            self.statusBar().showMessage("No points selected to delete.", 2000)
+            return
+        
+        num_deleted = len(self.plot.selected_points)
+        self.data.delete_selected_data(self.plot.selected_points)
+        self.plot.selected_points.clear() # Clear selection after deleting
+        self.plot.plot_harmonics(self.data)
+        self.statusBar().showMessage(f"Deleted {num_deleted} points.", 2000)
+
     def keyPressEvent(self, event):
+        print(f"Key pressed: {event.key()}, Modifiers: {event.modifiers()}")
+        # Check for platform-specific modifiers (Cmd on macOS, Ctrl on others)
+        is_modifier_pressed = (event.modifiers() & Qt.ControlModifier) or (event.modifiers() & Qt.MetaModifier)
+
         if event.key() == Qt.Key_I:
             self.set_marker_mode = not self.set_marker_mode
             if self.set_marker_mode:
@@ -158,6 +202,14 @@ class MainWindow(QMainWindow):
             self.plot.tool_mode = 'set_marker' if self.set_marker_mode else 'view' # Set plot tool mode
         elif event.key() == Qt.Key_P:
             self.audio_player.toggle_playback(self.data, self.play_action)
+        elif is_modifier_pressed and event.key() == Qt.Key_C:
+            self.copy_selected_harmonics()
+        elif is_modifier_pressed and event.key() == Qt.Key_X:
+            self.cut_selected_harmonics()
+        elif is_modifier_pressed and event.key() == Qt.Key_V:
+            self.paste_harmonics()
+        elif event.key() == Qt.Key_Delete or event.key() == Qt.Key_Backspace:
+            self.delete_selected_harmonics()
         else:
             super().keyPressEvent(event)
 
