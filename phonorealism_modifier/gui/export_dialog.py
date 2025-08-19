@@ -1,7 +1,7 @@
 import sys
 from PySide6.QtWidgets import (
     QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QCheckBox, QPushButton, QLabel, QLineEdit, QGridLayout, QMessageBox
+    QCheckBox, QPushButton, QLabel, QLineEdit, QGridLayout
 )
 from PySide6.QtCore import Qt
 
@@ -146,19 +146,12 @@ class ExportDialog(QDialog):
         self.toggle_svg_waveform_options(self.svg_waveform_export_checkbox.checkState())
 
     def toggle_wav_options(self, state):
-        print(f"toggle_wav_options called with state: {state}, type: {type(state)}")
-        print(f"Qt.Checked value: {Qt.Checked}, type: {type(Qt.Checked)}")
         enabled = (state == 2) # Compare integer value
-        print(f"Comparison result (state == 2): {enabled}")
         self.wav_full_checkbox.setEnabled(enabled)
         self.wav_parts_checkbox.setEnabled(enabled)
-        QMessageBox.information(self, "Debug", f"WAV options enabled: {enabled}")
 
     def toggle_svg_melody_options(self, state):
-        print(f"toggle_svg_melody_options called with state: {state}, type: {type(state)}")
-        print(f"Qt.Checked value: {Qt.Checked}, type: {type(Qt.Checked)}")
         enabled = (state == 2) # Compare integer value
-        print(f"Comparison result (state == 2): {enabled}")
         self.svg_melody_lin_checkbox.setEnabled(enabled)
         self.svg_melody_log_checkbox.setEnabled(enabled)
         self.svg_melody_full_checkbox.setEnabled(enabled)
@@ -169,20 +162,15 @@ class ExportDialog(QDialog):
         self.svg_melody_height_input.setEnabled(enabled)
         self.svg_melody_gain_input.setEnabled(enabled)
         self.svg_melody_max_points_input.setEnabled(enabled)
-        QMessageBox.information(self, "Debug", f"SVG Melody options enabled: {enabled}")
 
     def toggle_svg_waveform_options(self, state):
-        print(f"toggle_svg_waveform_options called with state: {state}, type: {type(state)}")
-        print(f"Qt.Checked value: {Qt.Checked}, type: {type(Qt.Checked)}")
         enabled = (state == 2) # Compare integer value
-        print(f"Comparison result (state == 2): {enabled}")
         self.svg_waveform_full_checkbox.setEnabled(enabled)
         self.svg_waveform_parts_checkbox.setEnabled(enabled)
         self.svg_waveform_width_input.setEnabled(enabled)
         self.svg_waveform_height_input.setEnabled(enabled)
         self.svg_waveform_gain_input.setEnabled(enabled)
         self.svg_waveform_max_points_input.setEnabled(enabled)
-        QMessageBox.information(self, "Debug", f"SVG Waveform options enabled: {enabled}")
 
     def get_settings(self):
         return {
