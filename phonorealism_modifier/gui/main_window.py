@@ -19,6 +19,8 @@ from gui.batch_edit_dialog import BatchEditDialog
 from gui.harmonics_plot import HarmonicsPlot
 from gui.audio_player import AudioPlayer
 from core.editor import HarmonicEditor
+from .export_dialog import ExportDialog
+from core.exporter import Exporter
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -29,6 +31,7 @@ class MainWindow(QMainWindow):
         self.plot = HarmonicsPlot(self) # Pass self (MainWindow) as parent
         self.audio_player = AudioPlayer(self) # Pass self (MainWindow) as parent
         self.harmonic_editor = HarmonicEditor(self.data)
+        self.exporter = Exporter(self.data)
         self._init_ui()
         # Central widget
         central = QWidget()
@@ -59,7 +62,7 @@ class MainWindow(QMainWindow):
         self.toolbar.addAction(insert_action) # Add to toolbar
 
         save_action = QAction("Save", self)
-        save_action.triggered.connect(self.save_csv)
+        save_action.triggered.connect(self.save_action)
         self.toolbar.addAction(save_action)
 
         self.play_action = QAction("Play", self)
@@ -211,18 +214,18 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to insert data:\n{e}")
 
-    def save_csv(self):
-        if hasattr(self, "current_file_path"):
-            path, _ = QFileDialog.getSaveFileName(self, "Save CSV", self.current_file_path, "CSV Files (*.csv)")
-        else:
-            path, _ = QFileDialog.getSaveFileName(self, "Save CSV", "", "CSV Files (*.csv)")
-        if not path:
-            return
-        try:
-            self.data.export_csv(path)
-            QMessageBox.information(self, "Success", f"File saved to:\n{path}")
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to save file:\n{e}")
+    def save_action(self):
+        if self.data.is_modified():
+            dialog = ExportDialog(self)
+            if dialog.exec():
+                settings = dialog.get_settings()
+                self.export_files(settings)
+
+    def export_files(self, settings):
+        file_path, _ = QFileDialog.getSaveFileName(self, "Save Exported Files", "", "All Files (*.*)")
+        if file_path:
+            self.exporter.export(settings, file_path)
+            self.data.reset_modified()
 
     def batch_edit(self):
         if not self.plot.selected_points:

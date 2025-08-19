@@ -282,8 +282,8 @@ class HarmonicEditor:
             except Exception as e:
                 print(f"Error parsing scale or applying snap to scale: {e}")
 
-        # --- Step 6: Mark data as dirty ---
-        self.data.dirty = True
+        # --- Step 6: Mark data as modified ---
+        self.data._modified = True
 
         # --- Step 7: Finalize ---
         self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}

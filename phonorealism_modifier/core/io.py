@@ -4,7 +4,13 @@ class HarmonicData:
     def __init__(self):
         self.df = None
         self.grouped = None
-        self.dirty = True
+        self._modified = False
+
+    def is_modified(self):
+        return self._modified
+
+    def reset_modified(self):
+        self._modified = False
 
     def load_csv(self, filepath):
         self.df = pd.read_csv(filepath)
@@ -12,7 +18,7 @@ class HarmonicData:
         if not required_cols.issubset(self.df.columns):
             raise ValueError(f"CSV missing required columns: {required_cols - set(self.df.columns)}")
         self.grouped = {idx: group.sort_values('time') for idx, group in self.df.groupby('harmonic_index')}
-        self.dirty = True
+        self._modified = True
 
     def load_dataframe(self, dataframe):
         """
@@ -24,11 +30,32 @@ class HarmonicData:
         if not required_cols.issubset(self.df.columns):
             raise ValueError(f"DataFrame missing required columns: {required_cols - set(self.df.columns)}")
         self.grouped = {idx: group.sort_values('time') for idx, group in self.df.groupby('harmonic_index')}
-        self.dirty = True
+        self._modified = True
 
     def export_csv(self, filepath):
         if self.df is not None:
             self.df.to_csv(filepath, index=False)
+
+    def get_duration(self):
+        if self.df is not None and not self.df.empty:
+            return self.df['time'].max()
+        return 0.0
+
+    def get_harmonics(self):
+        if self.df is None or self.df.empty:
+            return []
+
+        harmonics = []
+        # Get unique harmonic indices and sort them
+        unique_harmonic_indices = sorted(self.df['harmonic_index'].unique())
+
+        for h_idx in unique_harmonic_indices:
+            harmonic_df = self.df[self.df['harmonic_index'] == h_idx].sort_values(by='time')
+            harmonic_data = []
+            for _, row in harmonic_df.iterrows():
+                harmonic_data.append((row['time'], row['frequency'], row['amplitude']))
+            harmonics.append(harmonic_data)
+        return harmonics
 
     def get_selected_data(self, selected_points):
         if not selected_points or self.df is None:
@@ -77,7 +104,7 @@ class HarmonicData:
             self.df.drop(list(set(indices_to_drop)), inplace=True)
             self.df.reset_index(drop=True, inplace=True) # Reset index after dropping
             self.grouped = {idx: group.sort_values('time') for idx, group in self.df.groupby('harmonic_index')}
-            self.dirty = True
+            self._modified = True
 
     def insert_data(self, new_df, insert_time):
         if new_df.empty:
@@ -112,5 +139,5 @@ class HarmonicData:
             self.df = pd.concat([df_before_insert, shifted_new_df, shifted_df_after_insert], ignore_index=True)
 
         self.grouped = {idx: group.sort_values('time') for idx, group in self.df.groupby('harmonic_index')}
-        self.dirty = True
-        self.dirty = True
+        self._modified = True
+        self._modified = True
