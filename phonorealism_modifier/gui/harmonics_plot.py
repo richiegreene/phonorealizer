@@ -95,9 +95,7 @@ class HarmonicsPlot(pg.PlotWidget):
         self.autoRange()
 
     def box_select(self, rect: QRectF, clear_selection: bool = True, remove_from_selection: bool = False):
-        print(f"box_select: clear_selection={clear_selection}, remove_from_selection={remove_from_selection}")
         if clear_selection:
-            print("  box_select: Clearing selection.")
             self.selected_points.clear()
         
         newly_affected = []
@@ -107,10 +105,8 @@ class HarmonicsPlot(pg.PlotWidget):
                     newly_affected.append(spot)
         
         if remove_from_selection:
-            print(f"  box_select: Removing {len(newly_affected)} points from selection.")
             self.selected_points = [p for p in self.selected_points if p not in newly_affected]
         else:
-            print(f"  box_select: Adding {len(newly_affected)} points to selection.")
             # Add only unique points to selected_points
             for spot in newly_affected:
                 if spot not in self.selected_points:
@@ -118,13 +114,11 @@ class HarmonicsPlot(pg.PlotWidget):
         self.update_point_highlight()
 
     def lasso_select(self, polygon, clear_selection: bool = True, remove_from_selection: bool = False):
-        print(f"lasso_select: clear_selection={clear_selection}, remove_from_selection={remove_from_selection}")
         if len(polygon) < 3:
             return
         poly_path = Path([(p.x(), p.y()) for p in polygon])
         
         if clear_selection:
-            print("  lasso_select: Clearing selection.")
             self.selected_points.clear()
         
         newly_affected = []
@@ -134,10 +128,8 @@ class HarmonicsPlot(pg.PlotWidget):
                     newly_affected.append(spot)
         
         if remove_from_selection:
-            print(f"  lasso_select: Removing {len(newly_affected)} points from selection.")
             self.selected_points = [p for p in self.selected_points if p not in newly_affected]
         else:
-            print(f"  lasso_select: Adding {len(newly_affected)} points to selection.")
             # Add only unique points to selected_points
             for spot in newly_affected:
                 if spot not in self.selected_points:
@@ -153,7 +145,6 @@ class HarmonicsPlot(pg.PlotWidget):
                     spot.setPen(None)
 
     def select_partial(self, pos, clear_selection: bool = True, remove_from_selection: bool = False):
-        print(f"select_partial: clear_selection={clear_selection}, remove_from_selection={remove_from_selection}")
         # Find the closest point to the click
         closest_spot = None
         min_dist_sq = float('inf')
@@ -176,23 +167,18 @@ class HarmonicsPlot(pg.PlotWidget):
                         harmonic_points.append(spot)
             
             if remove_from_selection:
-                print(f"  select_partial: Removing {len(harmonic_points)} points from selection.")
                 self.selected_points = [p for p in self.selected_points if p not in harmonic_points]
             elif clear_selection:
-                print(f"  select_partial: Clearing selection and adding {len(harmonic_points)} points.")
                 self.selected_points.clear()
                 self.selected_points.extend(harmonic_points) # Add all points of the harmonic
             else: # Shift is pressed, so add/toggle
-                print(f"  select_partial: Shift pressed, adding/toggling {len(harmonic_points)} points.")
                 # Check if all points of this harmonic are already selected
                 all_selected = all(p in self.selected_points for p in harmonic_points)
                 if all_selected:
                     # If all are selected, deselect them
-                    print("    select_partial: All points already selected, deselecting.")
                     self.selected_points = [p for p in self.selected_points if p not in harmonic_points]
                 else:
                     # Otherwise, add any unselected points from this harmonic
-                    print("    select_partial: Adding unselected points.")
                     for p in harmonic_points:
                         if p not in self.selected_points:
                             self.selected_points.append(p)
@@ -228,8 +214,6 @@ class HarmonicsPlot(pg.PlotWidget):
             self._shift_pressed = bool(modifiers & Qt.ShiftModifier and not (modifiers & Qt.ControlModifier)) # Shift only (not with Command)
             self._remove_from_selection = bool(modifiers & Qt.ShiftModifier and modifiers & Qt.ControlModifier) # Shift + Command
 
-            print(f"mousePressEvent: Modifiers: {modifiers}, Shift: {self._shift_pressed}, Remove: {self._remove_from_selection}")
-
             if self.tool_mode == 'box':
                 self._drag_start = self.plotItem.vb.mapSceneToView(event.position())
                 self.selection_rect.setRect(QRectF(self._drag_start, self._drag_start))
@@ -250,7 +234,6 @@ class HarmonicsPlot(pg.PlotWidget):
                 # Pass both clear_selection and remove_from_selection
                 clear_sel = not self._shift_pressed and not self._remove_from_selection
                 remove_sel = self._remove_from_selection
-                print(f"  select_partial called from mousePressEvent: clear_selection={clear_sel}, remove_from_selection={remove_sel}")
                 self.select_partial(pos, clear_selection=clear_sel, remove_from_selection=remove_sel)
                 self._dragging = False # This tool is a single click, not a drag
         super().mousePressEvent(event)
@@ -281,14 +264,12 @@ class HarmonicsPlot(pg.PlotWidget):
                     # Pass both clear_selection and remove_from_selection
                     clear_sel = not self._shift_pressed and not self._remove_from_selection
                     remove_sel = self._remove_from_selection
-                    print(f"  box_select called from mouseReleaseEvent: clear_selection={clear_sel}, remove_from_selection={remove_sel}")
                     self.box_select(rect, clear_selection=clear_sel, remove_from_selection=remove_sel)
                     self.selection_rect.setVisible(False)
                 elif self.tool_mode == 'lasso':
                     # Pass both clear_selection and remove_from_selection
                     clear_sel = not self._shift_pressed and not self._remove_from_selection
                     remove_sel = self._remove_from_selection
-                    print(f"  lasso_select called from mouseReleaseEvent: clear_selection={clear_sel}, remove_from_selection={remove_sel}")
                     self.lasso_select(self._lasso_points, clear_selection=clear_sel, remove_from_selection=remove_sel)
                     self.lasso_path.setVisible(False)
                 elif self.tool_mode in ['smooth', 'dodge']:
