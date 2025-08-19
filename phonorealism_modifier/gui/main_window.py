@@ -95,12 +95,15 @@ class MainWindow(QMainWindow):
 
     # New method
     def toggle_y_axis_mode(self):
-        if self.y_axis_mode_action.isChecked():
+        # After the button is clicked, its checked state has already flipped.
+        # So, if it's now checked, it means we are going to Cents (Lin) mode.
+        # If it's now unchecked, it means we are going to Hz (Log) mode.
+        if self.y_axis_mode_action.isChecked(): # Now checked, so going to Cents (Lin)
             self.plot.set_y_axis_mode("Cents", 261.6256) # Fixed reference pitch
-            self.y_axis_mode_action.setText("Log")
-        else:
+            self.y_axis_mode_action.setText("Lin") # Button should now say "Lin"
+        else: # Now unchecked, so going to Hz (Log)
             self.plot.set_y_axis_mode("Hz", 261.6256) # Reference pitch doesn't matter for Hz
-            self.y_axis_mode_action.setText("Lin")
+            self.y_axis_mode_action.setText("Log") # Button should now say "Log"
 
     def open_csv(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open Harmonic CSV", "", "CSV Files (*.csv)")
