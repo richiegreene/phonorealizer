@@ -9,8 +9,9 @@ import numpy as np
 import time
 import traceback
 from collections import deque
+import librosa
 from .audio_io_dialog import AudioIODialog
-from phonorealism_extractor.core.synthesizer import synthesize_from_partials
+from phonorealism_extractor.core.synthesizer import synthesize_from_partials, db_to_linear
 
 class PerformWindow(QMainWindow):
     def __init__(self, data, parent=None):
@@ -30,6 +31,7 @@ class PerformWindow(QMainWindow):
 
         self.live_data_buffer = deque(maxlen=1000)
         self.live_amplitude_buffer = deque(maxlen=1000)
+        self.synthesized_rms_data = None
         self.selected_partial_data = None
         self.start_time = time.time()
         self.live_plot_time_range = 11
@@ -251,17 +253,20 @@ class PerformWindow(QMainWindow):
                 self.csv_plot.setYRange(0, self.selected_partial_data['frequency'].max() * 1.1)
 
                 # Update CSV amplitude plot
-                csv_amplitudes = np.abs(self.selected_partial_data['amplitude'].to_numpy())
-                max_csv_amplitude = np.max(csv_amplitudes)
-                if max_csv_amplitude > 0:
-                    normalized_csv_amplitudes = csv_amplitudes / max_csv_amplitude
+                if self.synthesized_rms_data:
+                    times, rms_values = zip(*self.synthesized_rms_data)
+                    self.csv_amplitude_curve.setData(x=np.array(times), y=np.array(rms_values))
                 else:
-                    normalized_csv_amplitudes = csv_amplitudes # Avoid division by zero
+                    # Fallback to original CSV amplitude if synthesized_rms_data is not available
+                    csv_amplitudes_db = self.selected_partial_data['amplitude'].to_numpy()
+                    csv_amplitudes_linear = db_to_linear(csv_amplitudes_db)
+                    max_csv_amplitude = np.max(csv_amplitudes_linear)
+                    if max_csv_amplitude > 0:
+                        normalized_csv_amplitudes = csv_amplitudes_linear / max_csv_amplitude
+                    else:
+                        normalized_csv_amplitudes = csv_amplitudes_linear # Avoid division by zero
+                    self.csv_amplitude_curve.setData(x=self.selected_partial_data['time'].to_numpy(), y=normalized_csv_amplitudes)
 
-                self.csv_amplitude_curve.setData(
-                    x=self.selected_partial_data['time'].to_numpy(),
-                    y=normalized_csv_amplitudes
-                )
                 self.synthesize_partial()
 
     def synthesize_partial(self):
@@ -282,6 +287,7 @@ class PerformWindow(QMainWindow):
             try:
                 synthesize_from_partials(partials_data, sr, output_path, duration)
                 self.media_player.setSource(QUrl.fromLocalFile(output_path))
+                self.synthesized_rms_data = self.analyze_wav_rms(output_path, sr)
             except Exception as e:
                 print(f"Error synthesizing partial: {e}")
                 traceback.print_exc()
@@ -345,3 +351,18 @@ class PerformWindow(QMainWindow):
     def gain_out(self):
         # Scale the Y-axis of the linked amplitude plots
         self.live_amplitude_plot.getViewBox().scaleBy((1, 2), center=(0,0))
+
+    def analyze_wav_rms(self, file_path, sr, hop_length=512):
+        y, _ = librosa.load(file_path, sr=sr)
+        # Calculate RMS for each frame
+        rms = librosa.feature.rms(y=y, frame_length=2048, hop_length=hop_length)[0] # [0] to get the 1D array
+        times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_length)
+
+        # Normalize RMS to peak of 1.0
+        max_rms = np.max(rms)
+        if max_rms > 0:
+            normalized_rms = rms / max_rms
+        else:
+            normalized_rms = rms # Avoid division by zero
+
+        return list(zip(times, normalized_rms))
