@@ -99,7 +99,7 @@ class PerformWindow(QMainWindow):
         self.live_plot = self.live_plot_widget.getPlotItem()
         self.live_plot.setTitle("Live Input Frequency")
         self.live_plot.showGrid(x=True, y=True)
-        self.live_plot_curve = self.live_plot.plot(pen='y')
+        self.live_plot_curve = self.live_plot.plot(pen='w')
         freq_splitter.addWidget(self.live_plot_widget)
 
         # Right plot for CSV partial frequency
@@ -108,7 +108,7 @@ class PerformWindow(QMainWindow):
         self.csv_plot.setTitle("CSV Partial Frequency")
         self.csv_plot.showGrid(x=True, y=True)
         self.csv_plot.showAxis('left', False)
-        self.csv_plot_curve = self.csv_plot.plot(pen='c')
+        self.csv_plot_curve = self.csv_plot.plot(pen='w')
         self.csv_plot.setXRange(0, 10)
         freq_splitter.addWidget(self.csv_plot_widget)
 
@@ -121,8 +121,8 @@ class PerformWindow(QMainWindow):
         self.live_amplitude_plot = self.live_amplitude_plot_widget.getPlotItem()
         self.live_amplitude_plot.setTitle("Live Input Amplitude")
         self.live_amplitude_plot.showGrid(x=True, y=True)
-        self.live_amplitude_curve = self.live_amplitude_plot.plot(pen='r')
-        self.live_amplitude_curve_inverted = self.live_amplitude_plot.plot(pen='r') # New inverted curve
+        self.live_amplitude_curve = self.live_amplitude_plot.plot(pen='w')
+        self.live_amplitude_curve_inverted = self.live_amplitude_plot.plot(pen='w') # New inverted curve
         amp_splitter.addWidget(self.live_amplitude_plot_widget)
 
         # Right plot for CSV partial amplitude
@@ -131,8 +131,8 @@ class PerformWindow(QMainWindow):
         self.csv_amplitude_plot.setTitle("CSV Partial Amplitude")
         self.csv_amplitude_plot.showGrid(x=True, y=True)
         self.csv_amplitude_plot.showAxis('left', False)
-        self.csv_amplitude_curve = self.csv_amplitude_plot.plot(pen='m')
-        self.csv_amplitude_curve_inverted = self.csv_amplitude_plot.plot(pen='m') # New inverted curve
+        self.csv_amplitude_curve = self.csv_amplitude_plot.plot(pen='w')
+        self.csv_amplitude_curve_inverted = self.csv_amplitude_plot.plot(pen='w') # New inverted curve
         self.csv_amplitude_plot.setXRange(0, 10)
         self.csv_amplitude_plot.setYRange(-1.2, 1.2) # Adjusted Y-range
         amp_splitter.addWidget(self.csv_amplitude_plot_widget)
