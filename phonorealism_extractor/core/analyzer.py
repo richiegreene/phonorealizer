@@ -24,6 +24,7 @@ def analyze_audio(file_path, num_harmonics=32):
 
     # Estimate fundamental frequency (f0)
     f0, _, _ = librosa.pyin(y, sr=sr, fmin=librosa.note_to_hz('C2'), fmax=librosa.note_to_hz('C7'), frame_length=N_FFT, hop_length=HOP_LENGTH)
+    f0 *= 2  # Correct for octave error
     times = librosa.times_like(f0, sr=sr, hop_length=HOP_LENGTH)
 
     # Get spectrogram
