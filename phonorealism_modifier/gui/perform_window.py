@@ -212,8 +212,20 @@ class PerformWindow(QMainWindow):
                     # Calculate RMS amplitude
                     rms_amplitude = np.sqrt(np.mean(samples**2))
 
+                    # Normalize RMS amplitude based on audio format
+                    if sample_format == QAudioFormat.SampleFormat.Int16:
+                        max_val = 32768.0 # Max value for int16 PCM
+                    elif sample_format == QAudioFormat.SampleFormat.Int32:
+                        max_val = 2147483648.0 # Max value for int32 PCM
+                    elif sample_format == QAudioFormat.SampleFormat.Float:
+                        max_val = 1.0 # Max value for float PCM
+                    else:
+                        max_val = 1.0 # Default to 1.0 if unknown format
+
+                    normalized_rms_amplitude = (rms_amplitude / max_val) * 2650
+
                     self.live_data_buffer.append((time.time(), peak_freq))
-                    self.live_amplitude_buffer.append((time.time(), rms_amplitude))
+                    self.live_amplitude_buffer.append((time.time(), normalized_rms_amplitude))
         except Exception as e:
             print(f"Error in process_audio: {e}")
             traceback.print_exc()
@@ -240,9 +252,9 @@ class PerformWindow(QMainWindow):
                 # Update CSV amplitude plot
                 self.csv_amplitude_curve.setData(
                     x=self.selected_partial_data['time'].to_numpy(),
-                    y=self.selected_partial_data['amplitude'].to_numpy()
+                    y=np.abs(self.selected_partial_data['amplitude'].to_numpy())
                 )
-                self.csv_amplitude_plot.setYRange(0, self.selected_partial_data['amplitude'].max() * 1.1)
+                self.csv_amplitude_plot.setYRange(0, np.abs(self.selected_partial_data['amplitude']).max() * 1.1)
                 self.synthesize_partial()
 
     def synthesize_partial(self):
