@@ -27,14 +27,14 @@ class Exporter:
 
     def export_wav(self, wav_settings, output_path):
         if wav_settings['full']:
-            self._synthesize_and_save(self.data.get_harmonics(), output_path + '.wav')
+            self._synthesize_and_save(self.data.get_harmonics(), output_path + '.wav', halve_frequencies=True)
         if wav_settings['parts']:
             output_dir = os.path.splitext(output_path)[0] + "_partials"
             os.makedirs(output_dir, exist_ok=True)
             for i, partial in enumerate(self.data.get_harmonics()):
-                self._synthesize_and_save([partial], os.path.join(output_dir, f"partial_{i+1}.wav"))
+                self._synthesize_and_save([partial], os.path.join(output_dir, f"partial_{i+1}.wav"), halve_frequencies=True)
 
-    def _synthesize_and_save(self, harmonics, output_path, sr=44100):
+    def _synthesize_and_save(self, harmonics, output_path, sr=44100, halve_frequencies=False):
         if not harmonics:
             return
 
@@ -45,6 +45,8 @@ class Exporter:
             if not harmonic:
                 continue
             time_array, freq_array, amp_array = zip(*harmonic)
+            if halve_frequencies:
+                freq_array = np.array(freq_array) / 2
             partial_wave = self._generate_partial_waveform(time_array, freq_array, amp_array, sr, duration)
             waveform[:len(partial_wave)] += partial_wave
 

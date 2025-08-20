@@ -215,11 +215,10 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Error", f"Failed to insert data:\n{e}")
 
     def save_action(self):
-        if self.data.is_modified():
-            dialog = ExportDialog(self)
-            if dialog.exec():
-                settings = dialog.get_settings()
-                self.export_files(settings)
+        dialog = ExportDialog(self)
+        if dialog.exec():
+            settings = dialog.get_settings()
+            self.export_files(settings)
 
     def export_files(self, settings):
         file_path, _ = QFileDialog.getSaveFileName(self, "Save Exported Files", "", "All Files (*.*)")
