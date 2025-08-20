@@ -130,6 +130,7 @@ class PerformWindow(QMainWindow):
         self.csv_amplitude_plot.showAxis('left', False)
         self.csv_amplitude_curve = self.csv_amplitude_plot.plot(pen='m')
         self.csv_amplitude_plot.setXRange(0, 10)
+        self.csv_amplitude_plot.setYRange(0, 1.2)
         amp_splitter.addWidget(self.csv_amplitude_plot_widget)
 
         # Link views
@@ -222,7 +223,7 @@ class PerformWindow(QMainWindow):
                     else:
                         max_val = 1.0 # Default to 1.0 if unknown format
 
-                    normalized_rms_amplitude = (rms_amplitude / max_val) * 2650
+                    normalized_rms_amplitude = (rms_amplitude / max_val) * 50
 
                     self.live_data_buffer.append((time.time(), peak_freq))
                     self.live_amplitude_buffer.append((time.time(), normalized_rms_amplitude))
@@ -250,11 +251,17 @@ class PerformWindow(QMainWindow):
                 self.csv_plot.setYRange(0, self.selected_partial_data['frequency'].max() * 1.1)
 
                 # Update CSV amplitude plot
+                csv_amplitudes = np.abs(self.selected_partial_data['amplitude'].to_numpy())
+                max_csv_amplitude = np.max(csv_amplitudes)
+                if max_csv_amplitude > 0:
+                    normalized_csv_amplitudes = csv_amplitudes / max_csv_amplitude
+                else:
+                    normalized_csv_amplitudes = csv_amplitudes # Avoid division by zero
+
                 self.csv_amplitude_curve.setData(
                     x=self.selected_partial_data['time'].to_numpy(),
-                    y=np.abs(self.selected_partial_data['amplitude'].to_numpy())
+                    y=normalized_csv_amplitudes
                 )
-                self.csv_amplitude_plot.setYRange(0, np.abs(self.selected_partial_data['amplitude']).max() * 1.1)
                 self.synthesize_partial()
 
     def synthesize_partial(self):
