@@ -92,6 +92,7 @@ class PerformWindow(QMainWindow):
         self.csv_plot = self.csv_plot_widget.getPlotItem()
         self.csv_plot.setTitle("CSV Partial")
         self.csv_plot.showGrid(x=True, y=True)
+        self.csv_plot.showAxis('left', False)
         self.csv_plot_curve = self.csv_plot.plot(pen='c')
         self.csv_plot.setXRange(0, 10)
         splitter.addWidget(self.csv_plot_widget)
