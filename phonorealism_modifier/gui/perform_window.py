@@ -34,7 +34,7 @@ class PerformWindow(QMainWindow):
         self.synthesized_rms_data = None
         self.selected_partial_data = None
         self.start_time = time.time()
-        self.live_plot_time_range = 11
+        self.live_plot_time_range = 5
 
         self.media_player.positionChanged.connect(self.update_playback_position)
 
@@ -99,7 +99,7 @@ class PerformWindow(QMainWindow):
         self.live_plot = self.live_plot_widget.getPlotItem()
         self.live_plot.setTitle("Live Input Frequency")
         self.live_plot.showGrid(x=True, y=True)
-        self.live_plot_curve = self.live_plot.plot(pen='w')
+        self.live_plot_curve = self.live_plot.plot(pen=pg.mkPen('w', width=1)) #change line width
         freq_splitter.addWidget(self.live_plot_widget)
 
         # Right plot for CSV partial frequency
@@ -108,8 +108,8 @@ class PerformWindow(QMainWindow):
         self.csv_plot.setTitle("CSV Partial Frequency")
         self.csv_plot.showGrid(x=True, y=True)
         self.csv_plot.showAxis('left', False)
-        self.csv_plot_curve = self.csv_plot.plot(pen='w')
-        self.csv_plot.setXRange(0, 10)
+        self.csv_plot_curve = self.csv_plot.plot(pen=pg.mkPen('w', width=1)) #change line width
+        self.csv_plot.setXRange(0, self.live_plot_time_range)
         freq_splitter.addWidget(self.csv_plot_widget)
 
         # Bottom splitter for amplitude plots
@@ -121,8 +121,8 @@ class PerformWindow(QMainWindow):
         self.live_amplitude_plot = self.live_amplitude_plot_widget.getPlotItem()
         self.live_amplitude_plot.setTitle("Live Input Amplitude")
         self.live_amplitude_plot.showGrid(x=True, y=True)
-        self.live_amplitude_curve = self.live_amplitude_plot.plot(pen='w')
-        self.live_amplitude_curve_inverted = self.live_amplitude_plot.plot(pen='w') # New inverted curve
+        self.live_amplitude_curve = self.live_amplitude_plot.plot(pen=pg.mkPen('w', width=1)) #change line width
+        self.live_amplitude_curve_inverted = self.live_amplitude_plot.plot(pen=pg.mkPen('w', width=1)) #change line width # New inverted curve
         amp_splitter.addWidget(self.live_amplitude_plot_widget)
 
         # Right plot for CSV partial amplitude
@@ -131,9 +131,9 @@ class PerformWindow(QMainWindow):
         self.csv_amplitude_plot.setTitle("CSV Partial Amplitude")
         self.csv_amplitude_plot.showGrid(x=True, y=True)
         self.csv_amplitude_plot.showAxis('left', False)
-        self.csv_amplitude_curve = self.csv_amplitude_plot.plot(pen='w')
-        self.csv_amplitude_curve_inverted = self.csv_amplitude_plot.plot(pen='w') # New inverted curve
-        self.csv_amplitude_plot.setXRange(0, 10)
+        self.csv_amplitude_curve = self.csv_amplitude_plot.plot(pen=pg.mkPen('w', width=1)) #change line width
+        self.csv_amplitude_curve_inverted = self.csv_amplitude_plot.plot(pen=pg.mkPen('w', width=1)) #change line width # New inverted curve
+        self.csv_amplitude_plot.setXRange(0, self.live_plot_time_range)
         self.csv_amplitude_plot.setYRange(-1.2, 1.2) # Adjusted Y-range
         amp_splitter.addWidget(self.csv_amplitude_plot_widget)
 
@@ -147,9 +147,13 @@ class PerformWindow(QMainWindow):
         self.live_amplitude_plot.setXLink(self.live_plot)
         self.csv_amplitude_plot.setXLink(self.csv_plot)
 
-        # Central line
+        # Central line for CSV pitch
         self.central_line_csv = pg.InfiniteLine(pos=0, angle=90, movable=False, pen='r')
         self.csv_plot.addItem(self.central_line_csv)
+
+        # Central line for CSV amplitude
+        self.central_line_csv_amp = pg.InfiniteLine(pos=0, angle=90, movable=False, pen='r')
+        self.csv_amplitude_plot.addItem(self.central_line_csv_amp)
 
     def setup_audio_io(self):
         dialog = AudioIODialog(self)
@@ -324,7 +328,7 @@ class PerformWindow(QMainWindow):
             current_time = time.time()
             times, freqs = zip(*self.live_data_buffer)
             shifted_times = np.array(times) - current_time
-            self.live_plot_curve.setData(x=shifted_times, y=freqs)
+            self.live_plot_curve.setData(x=shifted_times, y=np.array(freqs) * 2)
             self.live_plot.setXRange(-self.live_plot_time_range, 0)
 
         # Update live amplitude plot
