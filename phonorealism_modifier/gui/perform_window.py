@@ -37,6 +37,7 @@ class PerformWindow(QMainWindow):
         self.live_plot_time_range = 5
 
         self.media_player.positionChanged.connect(self.update_playback_position)
+        self.input_gain_factor = 1.0 # Initial input gain factor
 
         self._init_ui()
 
@@ -78,13 +79,21 @@ class PerformWindow(QMainWindow):
         pitch_zoom_out_action.triggered.connect(self.pitch_zoom_out)
         self.toolbar.addAction(pitch_zoom_out_action)
 
-        gain_in_action = QAction("Gain (+)", self)
-        gain_in_action.triggered.connect(self.gain_in)
-        self.toolbar.addAction(gain_in_action)
+        amplitude_zoom_in_action = QAction("Amplitude (+)", self)
+        amplitude_zoom_in_action.triggered.connect(self.amplitude_zoom_in)
+        self.toolbar.addAction(amplitude_zoom_in_action)
 
-        gain_out_action = QAction("Gain (-)", self)
-        gain_out_action.triggered.connect(self.gain_out)
-        self.toolbar.addAction(gain_out_action)
+        amplitude_zoom_out_action = QAction("Amplitude (-)", self)
+        amplitude_zoom_out_action.triggered.connect(self.amplitude_zoom_out)
+        self.toolbar.addAction(amplitude_zoom_out_action)
+
+        input_gain_in_action = QAction("Input Gain (+)", self)
+        input_gain_in_action.triggered.connect(self.input_gain_in)
+        self.toolbar.addAction(input_gain_in_action)
+
+        input_gain_out_action = QAction("Input Gain (-)", self)
+        input_gain_out_action.triggered.connect(self.input_gain_out)
+        self.toolbar.addAction(input_gain_out_action)
 
         # Central widget with splitter
         main_splitter = QSplitter(Qt.Vertical)
@@ -189,6 +198,7 @@ class PerformWindow(QMainWindow):
                     samples = np.frombuffer(data, dtype=dtype)
                     if audio_format.channelCount() == 2:
                         samples = samples[::2]
+                    samples = samples * self.input_gain_factor # Apply input gain
 
                     n = len(samples)
                     if n == 0:
@@ -354,13 +364,21 @@ class PerformWindow(QMainWindow):
     def pitch_zoom_out(self):
         self.csv_plot.getViewBox().scaleBy((1, 0.5), center=(0,0))
 
-    def gain_in(self):
+    def amplitude_zoom_in(self):
         # Scale the Y-axis of the linked amplitude plots
         self.live_amplitude_plot.getViewBox().scaleBy((1, 0.5), center=(0,0))
 
-    def gain_out(self):
+    def amplitude_zoom_out(self):
         # Scale the Y-axis of the linked amplitude plots
         self.live_amplitude_plot.getViewBox().scaleBy((1, 2), center=(0,0))
+
+    def input_gain_in(self):
+        self.input_gain_factor *= 1.2 # Increase gain by 20%
+        print(f"Input Gain: {self.input_gain_factor:.2f}")
+
+    def input_gain_out(self):
+        self.input_gain_factor *= 0.8 # Decrease gain by 20%
+        print(f"Input Gain: {self.input_gain_factor:.2f}")
 
     def analyze_wav_rms(self, file_path, sr, hop_length=512):
         y, _ = librosa.load(file_path, sr=sr)
