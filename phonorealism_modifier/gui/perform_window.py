@@ -31,7 +31,7 @@ class PerformWindow(QMainWindow):
         self.live_data_buffer = deque(maxlen=1000)
         self.selected_partial_data = None
         self.start_time = time.time()
-        self.live_plot_time_range = 10
+        self.live_plot_time_range = 11
 
         self.media_player.positionChanged.connect(self.update_playback_position)
 
@@ -145,11 +145,28 @@ class PerformWindow(QMainWindow):
                         return
 
                     sr = audio_format.sampleRate()
-                    fft_result = np.fft.rfft(samples)
-                    freqs = np.fft.rfftfreq(n, 1 / sr)
+
+                    # Apply a Hanning window to reduce spectral leakage
+                    windowed_samples = samples * np.hanning(n)
+
+                    # Zero-padding for better frequency resolution (interpolation)
+                    N_fft = 4096 # A common FFT size for pitch tracking
+
+                    fft_result = np.fft.rfft(windowed_samples, N_fft)
+                    freqs = np.fft.rfftfreq(N_fft, 1 / sr)
 
                     peak_index = np.argmax(np.abs(fft_result))
-                    peak_freq = freqs[peak_index]
+
+                    # Parabolic interpolation for more accurate peak frequency
+                    if peak_index > 0 and peak_index < len(freqs) - 1:
+                        mag_left = np.abs(fft_result[peak_index - 1])
+                        mag_center = np.abs(fft_result[peak_index])
+                        mag_right = np.abs(fft_result[peak_index + 1])
+
+                        p = 0.5 * (mag_left - mag_right) / (mag_left - 2 * mag_center + mag_right)
+                        peak_freq = freqs[peak_index] + p * (freqs[1] - freqs[0]) # (freqs[1] - freqs[0]) is bin width
+                    else:
+                        peak_freq = freqs[peak_index]
 
                     self.live_data_buffer.append((time.time(), peak_freq))
         except Exception as e:
