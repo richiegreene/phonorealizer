@@ -21,6 +21,7 @@ from gui.audio_player import AudioPlayer
 from core.editor import HarmonicEditor
 from .export_dialog import ExportDialog
 from core.exporter import Exporter
+from .perform_window import PerformWindow
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -32,6 +33,7 @@ class MainWindow(QMainWindow):
         self.audio_player = AudioPlayer(self) # Pass self (MainWindow) as parent
         self.harmonic_editor = HarmonicEditor(self.data)
         self.exporter = Exporter(self.data)
+        self.perform_window = None
         self._init_ui()
         # Central widget
         central = QWidget()
@@ -96,6 +98,10 @@ class MainWindow(QMainWindow):
         self.y_axis_mode_action.setChecked(False) # Default to linear (Hz)
         self.y_axis_mode_action.triggered.connect(self.toggle_y_axis_mode)
         self.toolbar.addAction(self.y_axis_mode_action)
+
+        perform_action = QAction("Perform", self)
+        perform_action.triggered.connect(self.open_perform_window)
+        self.toolbar.addAction(perform_action)
 
     def set_tool(self, tool):
         self.plot.tool_mode = tool
@@ -340,6 +346,13 @@ class MainWindow(QMainWindow):
         self.plot.selected_points = new_selection
         self.plot.update_selection_visuals()
         self.statusBar().showMessage(f"{len(self.plot.selected_points)} points selected.", 2000)
+
+    def open_perform_window(self):
+        if self.perform_window is None or not self.perform_window.isVisible():
+            self.perform_window = PerformWindow(self.data, self)
+            self.perform_window.show()
+        else:
+            self.perform_window.activateWindow()
 
     def keyPressEvent(self, event):
         # Check for platform-specific modifiers (Cmd on macOS, Ctrl on others)
