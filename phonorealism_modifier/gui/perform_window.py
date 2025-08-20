@@ -122,6 +122,7 @@ class PerformWindow(QMainWindow):
         self.live_amplitude_plot.setTitle("Live Input Amplitude")
         self.live_amplitude_plot.showGrid(x=True, y=True)
         self.live_amplitude_curve = self.live_amplitude_plot.plot(pen='r')
+        self.live_amplitude_curve_inverted = self.live_amplitude_plot.plot(pen='r') # New inverted curve
         amp_splitter.addWidget(self.live_amplitude_plot_widget)
 
         # Right plot for CSV partial amplitude
@@ -131,8 +132,9 @@ class PerformWindow(QMainWindow):
         self.csv_amplitude_plot.showGrid(x=True, y=True)
         self.csv_amplitude_plot.showAxis('left', False)
         self.csv_amplitude_curve = self.csv_amplitude_plot.plot(pen='m')
+        self.csv_amplitude_curve_inverted = self.csv_amplitude_plot.plot(pen='m') # New inverted curve
         self.csv_amplitude_plot.setXRange(0, 10)
-        self.csv_amplitude_plot.setYRange(0, 1.2)
+        self.csv_amplitude_plot.setYRange(-1.2, 1.2) # Adjusted Y-range
         amp_splitter.addWidget(self.csv_amplitude_plot_widget)
 
         # Link views
@@ -256,6 +258,7 @@ class PerformWindow(QMainWindow):
                 if self.synthesized_rms_data:
                     times, rms_values = zip(*self.synthesized_rms_data)
                     self.csv_amplitude_curve.setData(x=np.array(times), y=np.array(rms_values))
+                    self.csv_amplitude_curve_inverted.setData(x=np.array(times), y=-np.array(rms_values))
                 else:
                     # Fallback to original CSV amplitude if synthesized_rms_data is not available
                     csv_amplitudes_db = self.selected_partial_data['amplitude'].to_numpy()
@@ -266,6 +269,7 @@ class PerformWindow(QMainWindow):
                     else:
                         normalized_csv_amplitudes = csv_amplitudes_linear # Avoid division by zero
                     self.csv_amplitude_curve.setData(x=self.selected_partial_data['time'].to_numpy(), y=normalized_csv_amplitudes)
+                    self.csv_amplitude_curve_inverted.setData(x=self.selected_partial_data['time'].to_numpy(), y=-normalized_csv_amplitudes)
 
                 self.synthesize_partial()
 
@@ -313,6 +317,7 @@ class PerformWindow(QMainWindow):
         playback_position_sec = position / 1000.0
         self.csv_plot_curve.setPos(-playback_position_sec, 0)
         self.csv_amplitude_curve.setPos(-playback_position_sec, 0)
+        self.csv_amplitude_curve_inverted.setPos(-playback_position_sec, 0)
 
         # Update live plot
         if self.live_data_buffer:
@@ -328,6 +333,7 @@ class PerformWindow(QMainWindow):
             times_amp, amplitudes = zip(*self.live_amplitude_buffer)
             shifted_times_amp = np.array(times_amp) - current_time
             self.live_amplitude_curve.setData(x=shifted_times_amp, y=amplitudes)
+            self.live_amplitude_curve_inverted.setData(x=shifted_times_amp, y=-np.array(amplitudes))
             self.live_amplitude_plot.setXRange(-self.live_plot_time_range, 0)
 
     def time_zoom_in(self):
