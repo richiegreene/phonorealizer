@@ -29,6 +29,7 @@ class PerformWindow(QMainWindow):
         self.temp_wav_file = None
 
         self.live_data_buffer = deque(maxlen=1000)
+        self.live_amplitude_buffer = deque(maxlen=1000)
         self.selected_partial_data = None
         self.start_time = time.time()
         self.live_plot_time_range = 11
@@ -75,31 +76,71 @@ class PerformWindow(QMainWindow):
         pitch_zoom_out_action.triggered.connect(self.pitch_zoom_out)
         self.toolbar.addAction(pitch_zoom_out_action)
 
-        # Central widget with splitter
-        splitter = QSplitter(Qt.Horizontal)
-        self.setCentralWidget(splitter)
+        gain_in_action = QAction("Gain (+)", self)
+        gain_in_action.triggered.connect(self.gain_in)
+        self.toolbar.addAction(gain_in_action)
 
-        # Left plot for live audio
+        gain_out_action = QAction("Gain (-)", self)
+        gain_out_action.triggered.connect(self.gain_out)
+        self.toolbar.addAction(gain_out_action)
+
+        # Central widget with splitter
+        main_splitter = QSplitter(Qt.Vertical)
+        self.setCentralWidget(main_splitter)
+
+        # Top splitter for frequency plots
+        freq_splitter = QSplitter(Qt.Horizontal)
+        main_splitter.addWidget(freq_splitter)
+
+        # Left plot for live audio frequency
         self.live_plot_widget = pg.PlotWidget()
         self.live_plot = self.live_plot_widget.getPlotItem()
-        self.live_plot.setTitle("Live Input")
+        self.live_plot.setTitle("Live Input Frequency")
         self.live_plot.showGrid(x=True, y=True)
         self.live_plot_curve = self.live_plot.plot(pen='y')
-        splitter.addWidget(self.live_plot_widget)
+        freq_splitter.addWidget(self.live_plot_widget)
 
-        # Right plot for CSV partial
+        # Right plot for CSV partial frequency
         self.csv_plot_widget = pg.PlotWidget()
         self.csv_plot = self.csv_plot_widget.getPlotItem()
-        self.csv_plot.setTitle("CSV Partial")
+        self.csv_plot.setTitle("CSV Partial Frequency")
         self.csv_plot.showGrid(x=True, y=True)
         self.csv_plot.showAxis('left', False)
         self.csv_plot_curve = self.csv_plot.plot(pen='c')
         self.csv_plot.setXRange(0, 10)
-        splitter.addWidget(self.csv_plot_widget)
+        freq_splitter.addWidget(self.csv_plot_widget)
+
+        # Bottom splitter for amplitude plots
+        amp_splitter = QSplitter(Qt.Horizontal)
+        main_splitter.addWidget(amp_splitter)
+
+        # Left plot for live audio amplitude
+        self.live_amplitude_plot_widget = pg.PlotWidget()
+        self.live_amplitude_plot = self.live_amplitude_plot_widget.getPlotItem()
+        self.live_amplitude_plot.setTitle("Live Input Amplitude")
+        self.live_amplitude_plot.showGrid(x=True, y=True)
+        self.live_amplitude_curve = self.live_amplitude_plot.plot(pen='r')
+        amp_splitter.addWidget(self.live_amplitude_plot_widget)
+
+        # Right plot for CSV partial amplitude
+        self.csv_amplitude_plot_widget = pg.PlotWidget()
+        self.csv_amplitude_plot = self.csv_amplitude_plot_widget.getPlotItem()
+        self.csv_amplitude_plot.setTitle("CSV Partial Amplitude")
+        self.csv_amplitude_plot.showGrid(x=True, y=True)
+        self.csv_amplitude_plot.showAxis('left', False)
+        self.csv_amplitude_curve = self.csv_amplitude_plot.plot(pen='m')
+        self.csv_amplitude_plot.setXRange(0, 10)
+        amp_splitter.addWidget(self.csv_amplitude_plot_widget)
 
         # Link views
         self.live_plot.getViewBox().setYLink(self.csv_plot.getViewBox())
         self.live_plot.getViewBox().disableAutoRange(axis=pg.ViewBox.YAxis)
+        self.live_amplitude_plot.getViewBox().setYLink(self.csv_amplitude_plot.getViewBox())
+        self.live_amplitude_plot.getViewBox().disableAutoRange(axis=pg.ViewBox.YAxis)
+
+        # Link x-axes for synchronized scrolling
+        self.live_amplitude_plot.setXLink(self.live_plot)
+        self.csv_amplitude_plot.setXLink(self.csv_plot)
 
         # Central line
         self.central_line_csv = pg.InfiniteLine(pos=0, angle=90, movable=False, pen='r')
@@ -168,7 +209,11 @@ class PerformWindow(QMainWindow):
                     else:
                         peak_freq = freqs[peak_index]
 
+                    # Calculate RMS amplitude
+                    rms_amplitude = np.sqrt(np.mean(samples**2))
+
                     self.live_data_buffer.append((time.time(), peak_freq))
+                    self.live_amplitude_buffer.append((time.time(), rms_amplitude))
         except Exception as e:
             print(f"Error in process_audio: {e}")
             traceback.print_exc()
@@ -191,6 +236,13 @@ class PerformWindow(QMainWindow):
                     y=self.selected_partial_data['frequency'].to_numpy()
                 )
                 self.csv_plot.setYRange(0, self.selected_partial_data['frequency'].max() * 1.1)
+
+                # Update CSV amplitude plot
+                self.csv_amplitude_curve.setData(
+                    x=self.selected_partial_data['time'].to_numpy(),
+                    y=self.selected_partial_data['amplitude'].to_numpy()
+                )
+                self.csv_amplitude_plot.setYRange(0, self.selected_partial_data['amplitude'].max() * 1.1)
                 self.synthesize_partial()
 
     def synthesize_partial(self):
@@ -235,6 +287,7 @@ class PerformWindow(QMainWindow):
     def update_playback_position(self, position):
         playback_position_sec = position / 1000.0
         self.csv_plot_curve.setPos(-playback_position_sec, 0)
+        self.csv_amplitude_curve.setPos(-playback_position_sec, 0)
 
         # Update live plot
         if self.live_data_buffer:
@@ -243,6 +296,14 @@ class PerformWindow(QMainWindow):
             shifted_times = np.array(times) - current_time
             self.live_plot_curve.setData(x=shifted_times, y=freqs)
             self.live_plot.setXRange(-self.live_plot_time_range, 0)
+
+        # Update live amplitude plot
+        if self.live_amplitude_buffer:
+            current_time = time.time()
+            times_amp, amplitudes = zip(*self.live_amplitude_buffer)
+            shifted_times_amp = np.array(times_amp) - current_time
+            self.live_amplitude_curve.setData(x=shifted_times_amp, y=amplitudes)
+            self.live_amplitude_plot.setXRange(-self.live_plot_time_range, 0)
 
     def time_zoom_in(self):
         self.csv_plot.getViewBox().scaleBy((0.5, 1), center=(0,0))
@@ -257,3 +318,11 @@ class PerformWindow(QMainWindow):
 
     def pitch_zoom_out(self):
         self.csv_plot.getViewBox().scaleBy((1, 0.5), center=(0,0))
+
+    def gain_in(self):
+        # Scale the Y-axis of the linked amplitude plots
+        self.live_amplitude_plot.getViewBox().scaleBy((1, 0.5), center=(0,0))
+
+    def gain_out(self):
+        # Scale the Y-axis of the linked amplitude plots
+        self.live_amplitude_plot.getViewBox().scaleBy((1, 2), center=(0,0))
