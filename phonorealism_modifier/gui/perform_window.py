@@ -38,6 +38,7 @@ class PerformWindow(QMainWindow):
 
         self.media_player.positionChanged.connect(self.update_playback_position)
         self.input_gain_factor = 1.0 # Initial input gain factor
+        self.is_log_scale = False # Initial scale for frequency plots is linear
 
         self._init_ui()
 
@@ -62,6 +63,10 @@ class PerformWindow(QMainWindow):
         stop_action = QAction("Stop", self)
         stop_action.triggered.connect(self.stop_playback)
         self.toolbar.addAction(stop_action)
+
+        sync_action = QAction("Sync", self)
+        sync_action.triggered.connect(self.sync_plots)
+        self.toolbar.addAction(sync_action)
 
         time_zoom_in_action = QAction("Time (-)", self)
         time_zoom_in_action.triggered.connect(self.time_zoom_in)
@@ -95,6 +100,12 @@ class PerformWindow(QMainWindow):
         input_gain_out_action.triggered.connect(self.input_gain_out)
         self.toolbar.addAction(input_gain_out_action)
 
+        log_lin_toggle_action = QAction("Log/Lin Toggle", self)
+        log_lin_toggle_action.triggered.connect(self.toggle_log_lin_scale)
+        self.toolbar.addAction(log_lin_toggle_action)
+        self.log_lin_toggle_action = log_lin_toggle_action # Store action as instance variable
+        self.update_log_lin_button_text() # Set initial text
+
         # Central widget with splitter
         main_splitter = QSplitter(Qt.Vertical)
         self.setCentralWidget(main_splitter)
@@ -109,6 +120,7 @@ class PerformWindow(QMainWindow):
         self.live_plot.setTitle("") # Removed title
         self.live_plot.showGrid(x=True, y=True)
         self.live_plot.showAxis('bottom', False) # Removed x-axis label
+        self.live_plot.getViewBox().disableAutoRange(axis=pg.ViewBox.XAxis) # Disable auto-range for X-axis
         self.live_plot_curve = self.live_plot.plot(pen=pg.mkPen('w', width=1)) #change line width
         freq_splitter.addWidget(self.live_plot_widget)
 
@@ -119,6 +131,7 @@ class PerformWindow(QMainWindow):
         self.csv_plot.showGrid(x=True, y=True)
         self.csv_plot.showAxis('left', False)
         self.csv_plot.showAxis('bottom', False) # Removed x-axis label
+        self.csv_plot.getViewBox().disableAutoRange(axis=pg.ViewBox.XAxis) # Disable auto-range for X-axis
         self.csv_plot_curve = self.csv_plot.plot(pen=pg.mkPen('w', width=1)) #change line width
         self.csv_plot.setXRange(0, self.live_plot_time_range)
         freq_splitter.addWidget(self.csv_plot_widget)
@@ -132,7 +145,7 @@ class PerformWindow(QMainWindow):
         self.live_amplitude_plot = self.live_amplitude_plot_widget.getPlotItem()
         self.live_amplitude_plot.setTitle("") # Removed title
         self.live_amplitude_plot.showGrid(x=True, y=True)
-        self.live_amplitude_plot.showAxis('bottom', False) # Removed x-axis label
+        self.live_amplitude_plot.showAxis('bottom', True) # Retained x-axis label
         self.live_amplitude_curve = self.live_amplitude_plot.plot(pen=pg.mkPen('w', width=1)) #change line width
         self.live_amplitude_curve_inverted = self.live_amplitude_plot.plot(pen=pg.mkPen('w', width=1)) #change line width # New inverted curve
         amp_splitter.addWidget(self.live_amplitude_plot_widget)
@@ -143,7 +156,7 @@ class PerformWindow(QMainWindow):
         self.csv_amplitude_plot.setTitle("") # Removed title
         self.csv_amplitude_plot.showGrid(x=True, y=True)
         self.csv_amplitude_plot.showAxis('left', False)
-        self.csv_amplitude_plot.showAxis('bottom', False) # Removed x-axis label
+        self.csv_amplitude_plot.showAxis('bottom', True) # Retained x-axis label
         self.csv_amplitude_curve = self.csv_amplitude_plot.plot(pen=pg.mkPen('w', width=1)) #change line width
         self.csv_amplitude_curve_inverted = self.csv_amplitude_plot.plot(pen=pg.mkPen('w', width=1)) #change line width # New inverted curve
         self.csv_amplitude_plot.setXRange(0, self.live_plot_time_range)
@@ -157,16 +170,15 @@ class PerformWindow(QMainWindow):
         self.live_amplitude_plot.getViewBox().disableAutoRange(axis=pg.ViewBox.YAxis)
 
         # Link x-axes for synchronized scrolling
+        # Link x-axes for synchronized scrolling
         self.live_amplitude_plot.setXLink(self.live_plot)
         self.csv_amplitude_plot.setXLink(self.csv_plot)
 
-        # Central line for CSV pitch
-        self.central_line_csv = pg.InfiniteLine(pos=0, angle=90, movable=False, pen='r')
-        self.csv_plot.addItem(self.central_line_csv)
-
-        # Central line for CSV amplitude
-        self.central_line_csv_amp = pg.InfiniteLine(pos=0, angle=90, movable=False, pen='r')
-        self.csv_amplitude_plot.addItem(self.central_line_csv_amp)
+    def update_log_lin_button_text(self):
+        if self.is_log_scale:
+            self.log_lin_toggle_action.setText("Log")
+        else:
+            self.log_lin_toggle_action.setText("Lin")
 
     def setup_audio_io(self):
         dialog = AudioIODialog(self)
@@ -356,11 +368,17 @@ class PerformWindow(QMainWindow):
 
     def time_zoom_in(self):
         self.csv_plot.getViewBox().scaleBy((0.5, 1), center=(0,0))
-        self.live_plot_time_range *= 0.5
+        self.live_plot.getViewBox().scaleBy((0.5, 1), center=(0,0))
+        # Update live_plot_time_range based on the new x-range of live_plot
+        x_range = self.live_plot.getViewBox().viewRange()[0]
+        self.live_plot_time_range = abs(x_range[1] - x_range[0])
 
     def time_zoom_out(self):
         self.csv_plot.getViewBox().scaleBy((2, 1), center=(0,0))
-        self.live_plot_time_range *= 2
+        self.live_plot.getViewBox().scaleBy((2, 1), center=(0,0))
+        # Update live_plot_time_range based on the new x-range of live_plot
+        x_range = self.live_plot.getViewBox().viewRange()[0]
+        self.live_plot_time_range = abs(x_range[1] - x_range[0])
 
     def pitch_zoom_in(self):
         self.csv_plot.getViewBox().scaleBy((1, 2), center=(0,0))
@@ -383,6 +401,36 @@ class PerformWindow(QMainWindow):
     def input_gain_out(self):
         self.input_gain_factor *= 0.8 # Decrease gain by 20%
         print(f"Input Gain: {self.input_gain_factor:.2f}")
+
+    def toggle_log_lin_scale(self):
+        self.is_log_scale = not self.is_log_scale
+        if self.is_log_scale:
+            self.live_plot.setLogMode(x=False, y=True)
+            self.csv_plot.setLogMode(x=False, y=True)
+            print("Frequency plots set to Logarithmic scale")
+        else:
+            self.live_plot.setLogMode(x=False, y=False)
+            self.csv_plot.setLogMode(x=False, y=False)
+            print("Frequency plots set to Linear scale")
+
+        self.csv_amplitude_plot.update()
+
+        self.update_log_lin_button_text()
+
+    def sync_plots(self):
+        # Sync frequency plots
+        csv_freq_x_range, csv_freq_y_range = self.csv_plot.getViewBox().viewRange()
+        self.live_plot.setXRange(-csv_freq_x_range[1], -csv_freq_x_range[0]) # Invert X-axis
+        self.live_plot.setYRange(csv_freq_y_range[0], csv_freq_y_range[1])
+        # Update live_plot_time_range based on the new x-range of live_plot
+        x_range = self.live_plot.getViewBox().viewRange()[0]
+        self.live_plot_time_range = abs(x_range[1] - x_range[0])
+
+        # Sync amplitude plots
+        csv_amp_x_range, csv_amp_y_range = self.csv_amplitude_plot.getViewBox().viewRange()
+        self.live_amplitude_plot.setXRange(-csv_amp_x_range[1], -csv_amp_x_range[0]) # Invert X-axis
+        self.live_amplitude_plot.setYRange(csv_amp_y_range[0], csv_amp_y_range[1])
+        print("Plots synchronized.")
 
     def analyze_wav_rms(self, file_path, sr, hop_length=512):
         y, _ = librosa.load(file_path, sr=sr)
