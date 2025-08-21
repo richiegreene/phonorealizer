@@ -106,17 +106,19 @@ class PerformWindow(QMainWindow):
         # Left plot for live audio frequency
         self.live_plot_widget = pg.PlotWidget()
         self.live_plot = self.live_plot_widget.getPlotItem()
-        self.live_plot.setTitle("Live Input Frequency")
+        self.live_plot.setTitle("") # Removed title
         self.live_plot.showGrid(x=True, y=True)
+        self.live_plot.showAxis('bottom', False) # Removed x-axis label
         self.live_plot_curve = self.live_plot.plot(pen=pg.mkPen('w', width=1)) #change line width
         freq_splitter.addWidget(self.live_plot_widget)
 
         # Right plot for CSV partial frequency
         self.csv_plot_widget = pg.PlotWidget()
         self.csv_plot = self.csv_plot_widget.getPlotItem()
-        self.csv_plot.setTitle("CSV Partial Frequency")
+        self.csv_plot.setTitle("") # Removed title
         self.csv_plot.showGrid(x=True, y=True)
         self.csv_plot.showAxis('left', False)
+        self.csv_plot.showAxis('bottom', False) # Removed x-axis label
         self.csv_plot_curve = self.csv_plot.plot(pen=pg.mkPen('w', width=1)) #change line width
         self.csv_plot.setXRange(0, self.live_plot_time_range)
         freq_splitter.addWidget(self.csv_plot_widget)
@@ -128,8 +130,9 @@ class PerformWindow(QMainWindow):
         # Left plot for live audio amplitude
         self.live_amplitude_plot_widget = pg.PlotWidget()
         self.live_amplitude_plot = self.live_amplitude_plot_widget.getPlotItem()
-        self.live_amplitude_plot.setTitle("Live Input Amplitude")
+        self.live_amplitude_plot.setTitle("") # Removed title
         self.live_amplitude_plot.showGrid(x=True, y=True)
+        self.live_amplitude_plot.showAxis('bottom', False) # Removed x-axis label
         self.live_amplitude_curve = self.live_amplitude_plot.plot(pen=pg.mkPen('w', width=1)) #change line width
         self.live_amplitude_curve_inverted = self.live_amplitude_plot.plot(pen=pg.mkPen('w', width=1)) #change line width # New inverted curve
         amp_splitter.addWidget(self.live_amplitude_plot_widget)
@@ -137,9 +140,10 @@ class PerformWindow(QMainWindow):
         # Right plot for CSV partial amplitude
         self.csv_amplitude_plot_widget = pg.PlotWidget()
         self.csv_amplitude_plot = self.csv_amplitude_plot_widget.getPlotItem()
-        self.csv_amplitude_plot.setTitle("CSV Partial Amplitude")
+        self.csv_amplitude_plot.setTitle("") # Removed title
         self.csv_amplitude_plot.showGrid(x=True, y=True)
         self.csv_amplitude_plot.showAxis('left', False)
+        self.csv_amplitude_plot.showAxis('bottom', False) # Removed x-axis label
         self.csv_amplitude_curve = self.csv_amplitude_plot.plot(pen=pg.mkPen('w', width=1)) #change line width
         self.csv_amplitude_curve_inverted = self.csv_amplitude_plot.plot(pen=pg.mkPen('w', width=1)) #change line width # New inverted curve
         self.csv_amplitude_plot.setXRange(0, self.live_plot_time_range)
