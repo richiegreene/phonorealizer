@@ -446,3 +446,9 @@ class PerformWindow(QMainWindow):
             normalized_rms = rms # Avoid division by zero
 
         return list(zip(times, normalized_rms))
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_P:
+            self.toggle_playback(not self.play_pause_action.isChecked())
+        else:
+            super().keyPressEvent(event)
