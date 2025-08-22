@@ -326,16 +326,19 @@ class PerformWindow(QMainWindow):
                 print(f"Error synthesizing partial: {e}")
                 traceback.print_exc()
 
-    def toggle_playback(self, checked):
-        if checked:
+    def toggle_playback(self):
+        if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
+            self.media_player.pause()
+            self.play_pause_action.setText("Play")
+            self.play_pause_action.setChecked(False)
+        elif self.media_player.playbackState() == QMediaPlayer.PlaybackState.PausedState or \
+             self.media_player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
             if self.media_player.source().isEmpty():
                 self.play_pause_action.setChecked(False)
                 return
-            self.play_pause_action.setText("Pause")
             self.media_player.play()
-        else:
-            self.play_pause_action.setText("Play")
-            self.media_player.pause()
+            self.play_pause_action.setText("Pause")
+            self.play_pause_action.setChecked(True)
 
     def stop_playback(self):
         self.play_pause_action.setChecked(False)
@@ -449,6 +452,6 @@ class PerformWindow(QMainWindow):
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_P:
-            self.toggle_playback(not self.play_pause_action.isChecked())
+            self.toggle_playback()
         else:
             super().keyPressEvent(event)
