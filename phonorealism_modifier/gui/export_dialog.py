@@ -43,91 +43,88 @@ class ExportDialog(QDialog):
         self.wav_group.setLayout(self.wav_layout)
         self.layout.addWidget(self.wav_group)
 
-        # SVG Melody Export
-        self.svg_melody_group = QGroupBox("SVG Melody Export")
-        self.svg_melody_layout = QVBoxLayout()
-        self.svg_melody_layout.setContentsMargins(10, 10, 10, 10)
-        self.svg_melody_layout.setSpacing(5)
-        self.svg_melody_export_checkbox = QCheckBox("Export to SVG Melody")
-        self.svg_melody_export_checkbox.stateChanged.connect(self.toggle_svg_melody_options)
-        self.svg_melody_layout.addWidget(self.svg_melody_export_checkbox)
+        # SVG Pitch Export
+        self.svg_pitch_group = QGroupBox("SVG Pitch Export")
+        self.svg_pitch_layout = QVBoxLayout()
+        self.svg_pitch_layout.setContentsMargins(10, 10, 10, 10)
+        self.svg_pitch_layout.setSpacing(5)
+        self.svg_pitch_export_checkbox = QCheckBox("Export Pitch to SVG")
+        self.svg_pitch_export_checkbox.stateChanged.connect(self.toggle_svg_pitch_options)
+        self.svg_pitch_layout.addWidget(self.svg_pitch_export_checkbox)
 
-        self.svg_melody_lin_checkbox = QCheckBox("Log")
-        self.svg_melody_lin_checkbox.setChecked(True) # Set to checked by default
-        self.svg_melody_log_checkbox = QCheckBox("Lin")
-        self.svg_melody_full_checkbox = QCheckBox("Full")
-        self.svg_melody_full_checkbox.setChecked(True) # Set to checked by default
-        self.svg_melody_parts_checkbox = QCheckBox("Parts")
-        self.svg_melody_amp_checkbox = QCheckBox("Amplitude")
-        self.svg_melody_amp_checkbox.setChecked(True) # Set to checked by default
-        self.svg_melody_line_checkbox = QCheckBox("Line")
+        self.svg_pitch_lin_checkbox = QCheckBox("Log")
+        self.svg_pitch_lin_checkbox.setChecked(True) # Set to checked by default
+        self.svg_pitch_log_checkbox = QCheckBox("Lin")
+        self.svg_pitch_full_checkbox = QCheckBox("Full")
+        self.svg_pitch_full_checkbox.setChecked(True) # Set to checked by default
+        self.svg_pitch_parts_checkbox = QCheckBox("Parts")
+        self.svg_pitch_amp_checkbox = QCheckBox("Amplitude")
+        self.svg_pitch_amp_checkbox.setChecked(True) # Set to checked by default
+        self.svg_pitch_line_checkbox = QCheckBox("Line")
 
-        self.svg_melody_width_input = QLineEdit("1000")
-        self.svg_melody_height_input = QLineEdit("500")
-        self.svg_melody_gain_input = QLineEdit("1.00")
-        self.svg_melody_max_points_input = QLineEdit("5000")
+        self.svg_pitch_width_input = QLineEdit("1000")
+        self.svg_pitch_height_input = QLineEdit("500")
+        self.svg_pitch_gain_input = QLineEdit("1.00")
+        self.svg_pitch_max_points_input = QLineEdit("5000")
 
-        svg_melody_options_grid = QGridLayout()
-        svg_melody_options_grid.setContentsMargins(0, 0, 0, 0)
-        svg_melody_options_grid.setSpacing(5)
+        svg_pitch_options_grid = QGridLayout()
+        svg_pitch_options_grid.setContentsMargins(0, 0, 0, 0)
+        svg_pitch_options_grid.setSpacing(5)
 
-        svg_melody_options_grid.addWidget(self.svg_melody_lin_checkbox, 0, 0)
-        svg_melody_options_grid.addWidget(self.svg_melody_log_checkbox, 0, 1)
-        svg_melody_options_grid.addWidget(self.svg_melody_full_checkbox, 1, 0)
-        svg_melody_options_grid.addWidget(self.svg_melody_parts_checkbox, 1, 1)
-        svg_melody_options_grid.addWidget(self.svg_melody_amp_checkbox, 2, 0)
-        svg_melody_options_grid.addWidget(self.svg_melody_line_checkbox, 2, 1)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_lin_checkbox, 0, 0)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_log_checkbox, 0, 1)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_full_checkbox, 1, 0)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_parts_checkbox, 1, 1)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_amp_checkbox, 2, 0)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_line_checkbox, 2, 1)
 
-        svg_melody_options_grid.addWidget(QLabel("Width:"), 3, 0)
-        svg_melody_options_grid.addWidget(self.svg_melody_width_input, 3, 1)
-        svg_melody_options_grid.addWidget(QLabel("Height:"), 4, 0)
-        svg_melody_options_grid.addWidget(self.svg_melody_height_input, 4, 1)
-        svg_melody_options_grid.addWidget(QLabel("Gain:"), 5, 0)
-        svg_melody_options_grid.addWidget(self.svg_melody_gain_input, 5, 1)
-        svg_melody_options_grid.addWidget(QLabel("Max Waveform Points:"), 6, 0)
-        svg_melody_options_grid.addWidget(self.svg_melody_max_points_input, 6, 1)
+        svg_pitch_options_grid.addWidget(QLabel("Width:"), 3, 0)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_width_input, 3, 1)
+        svg_pitch_options_grid.addWidget(QLabel("Height:"), 4, 0)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_height_input, 4, 1)
+        svg_pitch_options_grid.addWidget(QLabel("Gain:"), 5, 0)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_gain_input, 5, 1)
+        svg_pitch_options_grid.addWidget(QLabel("Max Points:"), 6, 0)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_max_points_input, 6, 1)
 
-        self.svg_melody_layout.addLayout(svg_melody_options_grid)
-        self.svg_melody_group.setLayout(self.svg_melody_layout)
-        self.layout.addWidget(self.svg_melody_group)
+        self.svg_pitch_layout.addLayout(svg_pitch_options_grid)
+        self.svg_pitch_group.setLayout(self.svg_pitch_layout)
+        self.layout.addWidget(self.svg_pitch_group)
 
-        # SVG Waveform Export
-        self.svg_waveform_group = QGroupBox("SVG Waveform Export")
-        self.svg_waveform_layout = QVBoxLayout()
-        self.svg_waveform_layout.setContentsMargins(10, 10, 10, 10)
-        self.svg_waveform_layout.setSpacing(5)
-        self.svg_waveform_export_checkbox = QCheckBox("Export to SVG Waveform")
-        self.svg_waveform_export_checkbox.stateChanged.connect(self.toggle_svg_waveform_options)
-        self.svg_waveform_layout.addWidget(self.svg_waveform_export_checkbox)
+        # SVG Amplitude Export
+        self.svg_amplitude_group = QGroupBox("SVG Amplitude Export")
+        self.svg_amplitude_layout = QVBoxLayout()
+        self.svg_amplitude_layout.setContentsMargins(10, 10, 10, 10)
+        self.svg_amplitude_layout.setSpacing(5)
+        self.svg_amplitude_export_checkbox = QCheckBox("Export Amplitude to SVG")
+        self.svg_amplitude_export_checkbox.stateChanged.connect(self.toggle_svg_amplitude_options)
+        self.svg_amplitude_layout.addWidget(self.svg_amplitude_export_checkbox)
 
-        self.svg_waveform_full_checkbox = QCheckBox("Full")
-        self.svg_waveform_full_checkbox.setChecked(True) # Set to checked by default
-        self.svg_waveform_parts_checkbox = QCheckBox("Parts")
+        self.svg_amplitude_full_checkbox = QCheckBox("Full")
+        self.svg_amplitude_full_checkbox.setChecked(True) # Set to checked by default
+        self.svg_amplitude_parts_checkbox = QCheckBox("Parts")
 
-        self.svg_waveform_width_input = QLineEdit("1000")
-        self.svg_waveform_height_input = QLineEdit("500")
-        self.svg_waveform_gain_input = QLineEdit("1.00")
-        self.svg_waveform_max_points_input = QLineEdit("5000")
+        self.svg_amplitude_width_input = QLineEdit("1000")
+        self.svg_amplitude_height_input = QLineEdit("500")
+        self.svg_amplitude_max_points_input = QLineEdit("5000")
 
-        svg_waveform_options_grid = QGridLayout()
-        svg_waveform_options_grid.setContentsMargins(0, 0, 0, 0)
-        svg_waveform_options_grid.setSpacing(5)
+        svg_amplitude_options_grid = QGridLayout()
+        svg_amplitude_options_grid.setContentsMargins(0, 0, 0, 0)
+        svg_amplitude_options_grid.setSpacing(5)
 
-        svg_waveform_options_grid.addWidget(self.svg_waveform_full_checkbox, 0, 0)
-        svg_waveform_options_grid.addWidget(self.svg_waveform_parts_checkbox, 0, 1)
+        svg_amplitude_options_grid.addWidget(self.svg_amplitude_full_checkbox, 0, 0)
+        svg_amplitude_options_grid.addWidget(self.svg_amplitude_parts_checkbox, 0, 1)
 
-        svg_waveform_options_grid.addWidget(QLabel("Width:"), 1, 0)
-        svg_waveform_options_grid.addWidget(self.svg_waveform_width_input, 1, 1)
-        svg_waveform_options_grid.addWidget(QLabel("Height:"), 2, 0)
-        svg_waveform_options_grid.addWidget(self.svg_waveform_height_input, 2, 1)
-        svg_waveform_options_grid.addWidget(QLabel("Gain:"), 3, 0)
-        svg_waveform_options_grid.addWidget(self.svg_waveform_gain_input, 3, 1)
-        svg_waveform_options_grid.addWidget(QLabel("Max Waveform Points:"), 4, 0)
-        svg_waveform_options_grid.addWidget(self.svg_waveform_max_points_input, 4, 1)
+        svg_amplitude_options_grid.addWidget(QLabel("Width:"), 1, 0)
+        svg_amplitude_options_grid.addWidget(self.svg_amplitude_width_input, 1, 1)
+        svg_amplitude_options_grid.addWidget(QLabel("Height:"), 2, 0)
+        svg_amplitude_options_grid.addWidget(self.svg_amplitude_height_input, 2, 1)
+        svg_amplitude_options_grid.addWidget(QLabel("Max Points:"), 3, 0)
+        svg_amplitude_options_grid.addWidget(self.svg_amplitude_max_points_input, 3, 1)
 
-        self.svg_waveform_layout.addLayout(svg_waveform_options_grid)
-        self.svg_waveform_group.setLayout(self.svg_waveform_layout)
-        self.layout.addWidget(self.svg_waveform_group)
+        self.svg_amplitude_layout.addLayout(svg_amplitude_options_grid)
+        self.svg_amplitude_group.setLayout(self.svg_amplitude_layout)
+        self.layout.addWidget(self.svg_amplitude_group)
 
         # Buttons
         self.button_box = QWidget()
@@ -142,35 +139,34 @@ class ExportDialog(QDialog):
 
         # Initial state setup
         self.toggle_wav_options(self.wav_export_checkbox.checkState())
-        self.toggle_svg_melody_options(self.svg_melody_export_checkbox.checkState())
-        self.toggle_svg_waveform_options(self.svg_waveform_export_checkbox.checkState())
+        self.toggle_svg_pitch_options(self.svg_pitch_export_checkbox.checkState())
+        self.toggle_svg_amplitude_options(self.svg_amplitude_export_checkbox.checkState())
 
     def toggle_wav_options(self, state):
         enabled = (state == 2) # Compare integer value
         self.wav_full_checkbox.setEnabled(enabled)
         self.wav_parts_checkbox.setEnabled(enabled)
 
-    def toggle_svg_melody_options(self, state):
+    def toggle_svg_pitch_options(self, state):
         enabled = (state == 2) # Compare integer value
-        self.svg_melody_lin_checkbox.setEnabled(enabled)
-        self.svg_melody_log_checkbox.setEnabled(enabled)
-        self.svg_melody_full_checkbox.setEnabled(enabled)
-        self.svg_melody_parts_checkbox.setEnabled(enabled)
-        self.svg_melody_amp_checkbox.setEnabled(enabled)
-        self.svg_melody_line_checkbox.setEnabled(enabled)
-        self.svg_melody_width_input.setEnabled(enabled)
-        self.svg_melody_height_input.setEnabled(enabled)
-        self.svg_melody_gain_input.setEnabled(enabled)
-        self.svg_melody_max_points_input.setEnabled(enabled)
+        self.svg_pitch_lin_checkbox.setEnabled(enabled)
+        self.svg_pitch_log_checkbox.setEnabled(enabled)
+        self.svg_pitch_full_checkbox.setEnabled(enabled)
+        self.svg_pitch_parts_checkbox.setEnabled(enabled)
+        self.svg_pitch_amp_checkbox.setEnabled(enabled)
+        self.svg_pitch_line_checkbox.setEnabled(enabled)
+        self.svg_pitch_width_input.setEnabled(enabled)
+        self.svg_pitch_height_input.setEnabled(enabled)
+        self.svg_pitch_gain_input.setEnabled(enabled)
+        self.svg_pitch_max_points_input.setEnabled(enabled)
 
-    def toggle_svg_waveform_options(self, state):
+    def toggle_svg_amplitude_options(self, state):
         enabled = (state == 2) # Compare integer value
-        self.svg_waveform_full_checkbox.setEnabled(enabled)
-        self.svg_waveform_parts_checkbox.setEnabled(enabled)
-        self.svg_waveform_width_input.setEnabled(enabled)
-        self.svg_waveform_height_input.setEnabled(enabled)
-        self.svg_waveform_gain_input.setEnabled(enabled)
-        self.svg_waveform_max_points_input.setEnabled(enabled)
+        self.svg_amplitude_full_checkbox.setEnabled(enabled)
+        self.svg_amplitude_parts_checkbox.setEnabled(enabled)
+        self.svg_amplitude_width_input.setEnabled(enabled)
+        self.svg_amplitude_height_input.setEnabled(enabled)
+        self.svg_amplitude_max_points_input.setEnabled(enabled)
 
     def get_settings(self):
         return {
@@ -182,27 +178,26 @@ class ExportDialog(QDialog):
                 "full": self.wav_full_checkbox.isChecked(),
                 "parts": self.wav_parts_checkbox.isChecked()
             },
-            "svg_melody": {
-                "export": self.svg_melody_export_checkbox.isChecked(),
-                "lin": self.svg_melody_lin_checkbox.isChecked(),
-                "log": self.svg_melody_log_checkbox.isChecked(),
-                "full": self.svg_melody_full_checkbox.isChecked(),
-                "parts": self.svg_melody_parts_checkbox.isChecked(),
-                "width": int(self.svg_melody_width_input.text()),
-                "height": int(self.svg_melody_height_input.text()),
-                "gain": float(self.svg_melody_gain_input.text()),
-                "max_points": int(self.svg_melody_max_points_input.text()),
-                "amplitude": self.svg_melody_amp_checkbox.isChecked(),
-                "line": self.svg_melody_line_checkbox.isChecked()
+            "svg_pitch": {
+                "export": self.svg_pitch_export_checkbox.isChecked(),
+                "lin": self.svg_pitch_lin_checkbox.isChecked(),
+                "log": self.svg_pitch_log_checkbox.isChecked(),
+                "full": self.svg_pitch_full_checkbox.isChecked(),
+                "parts": self.svg_pitch_parts_checkbox.isChecked(),
+                "width": int(self.svg_pitch_width_input.text()),
+                "height": int(self.svg_pitch_height_input.text()),
+                "gain": float(self.svg_pitch_gain_input.text()),
+                "max_points": int(self.svg_pitch_max_points_input.text()),
+                "amplitude": self.svg_pitch_amp_checkbox.isChecked(),
+                "line": self.svg_pitch_line_checkbox.isChecked()
             },
-            "svg_waveform": {
-                "export": self.svg_waveform_export_checkbox.isChecked(),
-                "full": self.svg_waveform_full_checkbox.isChecked(),
-                "parts": self.svg_waveform_parts_checkbox.isChecked(),
-                "width": int(self.svg_waveform_width_input.text()),
-                "height": int(self.svg_waveform_height_input.text()),
-                "gain": float(self.svg_waveform_gain_input.text()),
-                "max_points": int(self.svg_waveform_max_points_input.text())
+            "svg_amplitude": {
+                "export": self.svg_amplitude_export_checkbox.isChecked(),
+                "full": self.svg_amplitude_full_checkbox.isChecked(),
+                "parts": self.svg_amplitude_parts_checkbox.isChecked(),
+                "width": int(self.svg_amplitude_width_input.text()),
+                "height": int(self.svg_amplitude_height_input.text()),
+                "max_points": int(self.svg_amplitude_max_points_input.text())
             }
         }
 

@@ -4,6 +4,7 @@ import pandas as pd
 import soundfile as sf
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom.minidom import parseString
+import librosa
 
 class Exporter:
     def __init__(self, data):
@@ -16,11 +17,11 @@ class Exporter:
         if settings['wav']['export']:
             self.export_wav(settings['wav'], output_path)
 
-        if settings['svg_melody']['export']:
-            self.export_svg_melody(settings['svg_melody'], output_path)
+        if settings['svg_pitch']['export']:
+            self.export_svg_pitch(settings['svg_pitch'], output_path)
 
-        if settings['svg_waveform']['export']:
-            self.export_svg_waveform(settings['svg_waveform'], output_path)
+        if settings['svg_amplitude']['export']:
+            self.export_svg_amplitude(settings['svg_amplitude'], output_path)
 
     def export_csv(self, output_path):
         self.data.export_csv(output_path + '.csv')
@@ -70,7 +71,7 @@ class Exporter:
     def _db_to_linear(self, db):
         return 10 ** (db / 20)
 
-    def export_svg_melody(self, svg_settings, output_path):
+    def export_svg_pitch(self, svg_settings, output_path):
         render_mode = 'line' if svg_settings['line'] else 'amplitude' # Determine render mode
 
         if svg_settings['full']:
@@ -79,7 +80,7 @@ class Exporter:
             if svg_settings['log']:
                 self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', render_mode=render_mode, **svg_settings)
         if svg_settings['parts']:
-            output_dir = os.path.splitext(output_path)[0] + "_melody_partials"
+            output_dir = os.path.splitext(output_path)[0] + "_pitch_partials"
             os.makedirs(output_dir, exist_ok=True)
             for i, partial in enumerate(self.data.get_harmonics()):
                 if svg_settings['lin']:
@@ -87,20 +88,22 @@ class Exporter:
                 if svg_settings['log']:
                     self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_log.svg"), scale='log', render_mode=render_mode, **svg_settings)
 
-    def export_svg_waveform(self, svg_settings, output_path):
+    def export_svg_amplitude(self, svg_settings, output_path):
+        import svgwrite
+
         if svg_settings['full']:
-            waveform = self._synthesize_waveform(self.data.get_harmonics())
-            self._save_waveform_svg(waveform, output_path + '_waveform.svg', **svg_settings)
+            amplitude_data = self._get_amplitude_data(self.data.get_harmonics())
+            self._save_amplitude_svg(amplitude_data, output_path + '_amplitude.svg', **svg_settings)
         if svg_settings['parts']:
-            output_dir = os.path.splitext(output_path)[0] + "_waveform_partials"
+            output_dir = os.path.splitext(output_path)[0] + "_amplitude_partials"
             os.makedirs(output_dir, exist_ok=True)
             for i, partial in enumerate(self.data.get_harmonics()):
-                waveform = self._synthesize_waveform([partial])
-                self._save_waveform_svg(waveform, os.path.join(output_dir, f"partial_{i+1}_waveform.svg"), **svg_settings)
+                amplitude_data = self._get_amplitude_data([partial])
+                self._save_amplitude_svg(amplitude_data, os.path.join(output_dir, f"partial_{i+1}_amplitude.svg"), **svg_settings)
 
-    def _synthesize_waveform(self, harmonics, sr=44100):
+    def _get_amplitude_data(self, harmonics, sr=44100, hop_length=512):
         if not harmonics:
-            return np.array([])
+            return []
 
         duration = self.data.get_duration()
         waveform = np.zeros(int(sr * duration))
@@ -112,11 +115,66 @@ class Exporter:
             partial_wave = self._generate_partial_waveform(time_array, freq_array, amp_array, sr, duration)
             waveform[:len(partial_wave)] += partial_wave
 
+        # Normalize waveform to -1 to 1
         max_abs_amp = np.max(np.abs(waveform))
         if max_abs_amp > 0:
             waveform /= max_abs_amp
+
+        # Calculate RMS for each frame
+        rms = librosa.feature.rms(y=waveform, frame_length=2048, hop_length=hop_length)[0] # [0] to get the 1D array
+        times = librosa.frames_to_time(np.arange(len(rms)), sr=sr, hop_length=hop_length)
+
+        # Normalize RMS to peak of 1.0
+        max_rms = np.max(rms)
+        if max_rms > 0:
+            normalized_rms = rms / max_rms
+        else:
+            normalized_rms = rms # Avoid division by zero
+
+        return list(zip(times, normalized_rms))
+
+    def _save_amplitude_svg(self, amplitude_data, output_path, width=5000, height=500, max_points=5000, **kwargs):
+        import svgwrite
+        dwg = svgwrite.Drawing(output_path, profile='tiny')
+        dwg.viewbox(0, 0, width, height)
+
+        if len(amplitude_data) > max_points:
+            indices = np.linspace(0, len(amplitude_data) - 1, max_points, dtype=int)
+            amplitude_data = [amplitude_data[i] for i in indices]
+
+        if not amplitude_data:
+            dwg.save()
+            return
+
+        times, amplitudes = zip(*amplitude_data)
+
+        time_scale = width / (times[-1] if times else 1)
+        center_y = height / 2.0
+
+        top_path_coords = []
+        bottom_path_coords = []
+
+        for i in range(len(times)):
+            x = times[i] * time_scale
+            # Scale amplitude to half of height
+            scaled_amplitude = amplitudes[i] * (height / 2.0)
+            y_top = center_y - scaled_amplitude
+            y_bottom = center_y + scaled_amplitude
+            top_path_coords.append((x, y_top))
+            bottom_path_coords.append((x, y_bottom))
+
+        path_d = f"M {top_path_coords[0][0]},{top_path_coords[0][1]} "
+        for p in top_path_coords[1:]:
+            path_d += f"L {p[0]},{p[1]} "
         
-        return waveform
+        path_d += f"L {bottom_path_coords[-1][0]},{bottom_path_coords[-1][1]} "
+        for p in reversed(bottom_path_coords[:-1]):
+            path_d += f"L {p[0]},{p[1]} "
+        path_d += "Z"
+
+        dwg.add(dwg.path(d=path_d, stroke='none', fill=svgwrite.rgb(0, 0, 0, '%')))
+
+        dwg.save()
 
     def _save_full_svg(self, partials, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', **kwargs):
         import svgwrite
