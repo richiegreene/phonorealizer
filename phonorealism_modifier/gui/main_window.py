@@ -37,7 +37,7 @@ class AnalysisOptionsDialog(QDialog):
         self.formLayout.addRow("Number of Harmonics:", self.num_harmonics_spinbox)
         
         self.analysis_mode_combo = QComboBox()
-        self.analysis_mode_combo.addItems(["Isolated Harmonics", "Spectral Bleed Through", "Isolated Artifacts"])
+        self.analysis_mode_combo.addItems(["Spectral Bleed Through", "Isolated Harmonics", "Isolated Artifacts"])
         self.formLayout.addRow("Analysis Mode:", self.analysis_mode_combo)
         
         self.layout.addLayout(self.formLayout)

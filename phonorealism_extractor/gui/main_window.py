@@ -40,7 +40,7 @@ def create_main_window():
 
     with dpg.window(label="Analysis Options", modal=True, show=False, tag="analysis_options_modal", width=400):
         dpg.add_text("Choose an analysis method:")
-        dpg.add_radio_button(items=["Isolated Harmonics", "Spectral Bleed Through", "Isolated Artifacts"], tag="analysis_mode_radio", default_value="Isolated Harmonics")
+        dpg.add_radio_button(items=["Spectral Bleed Through", "Isolated Harmonics", "Isolated Artifacts"], tag="analysis_mode_radio", default_value="Spectral Bleed Through")
         with dpg.group(horizontal=True):
             dpg.add_button(label="Analyze", callback=perform_analysis, tag="analyze_button")
             dpg.add_button(label="Cancel", callback=lambda: dpg.hide_item("analysis_options_modal"))
