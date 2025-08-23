@@ -98,6 +98,7 @@ class HarmonicEditor:
         try:
             selected_indices = [spot.data()['index'] for spot in selected_points]
         except KeyError:
+            # Fallback for older selection data that might not have the direct index
             point_masks = []
             for spot in selected_points:
                 data = spot.data()
@@ -148,7 +149,8 @@ class HarmonicEditor:
             
             self.data.df.loc[idx, 'frequency'] = current_freq
 
-        # --- Step 3: Apply Time Edits ---
+        # --- Step 3: Scaling ---
+        # Time Scaling
         time_scale_str = edits.get('time_scale', '').strip()
         if time_scale_str:
             try:
@@ -158,6 +160,39 @@ class HarmonicEditor:
                     self.data.df.loc[selected_indices, 'time'] = min_time + (self.data.df.loc[selected_indices, 'time'] - min_time) * scale_factor
             except ValueError:
                 print(f"Could not parse '{time_scale_str}' for Time Scale. Skipping.")
+        
+        # Pitch Scaling
+        pitch_scale_factor_str = edits.get('pitch_scale_factor', '').strip()
+        pitch_scale_fixed_partial_str = edits.get('pitch_scale_fixed_partial', '').strip()
+        if pitch_scale_factor_str and pitch_scale_fixed_partial_str:
+            try:
+                pitch_scale_factor = float(Fraction(pitch_scale_factor_str))
+                fixed_partial = int(pitch_scale_fixed_partial_str)
+
+                for idx in selected_indices:
+                    harmonic_index = self.data.df.loc[idx, 'harmonic_index']
+                    if harmonic_index > fixed_partial:
+                        self.data.df.loc[idx, 'frequency'] *= pitch_scale_factor
+                    elif harmonic_index < fixed_partial:
+                        self.data.df.loc[idx, 'frequency'] /= pitch_scale_factor
+            except (ValueError, ZeroDivisionError) as e:
+                print(f"Could not apply pitch scaling: {e}")
+
+        # Amplitude Scaling (Dynamic Scaling)
+        amplitude_scale_factor_str = edits.get('amplitude_scale_factor', '').strip()
+        amplitude_scale_fixed_partial_str = edits.get('amplitude_scale_fixed_partial', '').strip()
+        if amplitude_scale_factor_str and amplitude_scale_fixed_partial_str:
+            try:
+                amplitude_scale_factor = float(Fraction(amplitude_scale_factor_str))
+                fixed_partial = int(amplitude_scale_fixed_partial_str)
+
+                for idx in selected_indices:
+                    harmonic_index = self.data.df.loc[idx, 'harmonic_index']
+                    distance = abs(harmonic_index - fixed_partial)
+                    if distance > 0:
+                        self.data.df.loc[idx, 'amplitude'] *= (amplitude_scale_factor ** distance)
+            except (ValueError, ZeroDivisionError) as e:
+                print(f"Could not apply amplitude scaling: {e}")
 
         # --- Step 4: Smoothing ---
         use_smoothstep = edits.get('smoothstep', False)

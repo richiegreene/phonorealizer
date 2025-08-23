@@ -9,6 +9,7 @@ class BatchEditDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Edit Selected")
+        self.setStyleSheet("QLineEdit::placeholder { color: rgb(53, 53, 53); }")
         layout = QFormLayout(self)
         self.inputs = {}
 
@@ -19,8 +20,25 @@ class BatchEditDialog(QDialog):
             layout.addRow(key, le)
             self.inputs[key] = le
 
-        # Time Edits
-        layout.addRow(pg.QtWidgets.QLabel("———" + " Time Edits ———")) # Separator
+        # Scaling
+        layout.addRow(pg.QtWidgets.QLabel("———" + " Scaling ———")) # Separator
+        
+        self.inputs['pitch_scale_factor'] = QLineEdit()
+        self.inputs['pitch_scale_factor'].setPlaceholderText("e.g. 2 or 5/4")
+        layout.addRow("Pitch Scaling", self.inputs['pitch_scale_factor'])
+
+        self.inputs['pitch_scale_fixed_partial'] = QLineEdit()
+        self.inputs['pitch_scale_fixed_partial'].setPlaceholderText("1")
+        layout.addRow("Fixed Partial", self.inputs['pitch_scale_fixed_partial'])
+
+        self.inputs['amplitude_scale_factor'] = QLineEdit()
+        self.inputs['amplitude_scale_factor'].setPlaceholderText("e.g. 0.5 or 1/16")
+        layout.addRow("Dynamic Scaling", self.inputs['amplitude_scale_factor'])
+
+        self.inputs['amplitude_scale_fixed_partial'] = QLineEdit()
+        self.inputs['amplitude_scale_fixed_partial'].setPlaceholderText("1")
+        layout.addRow("Fixed Partial", self.inputs['amplitude_scale_fixed_partial'])
+
         self.inputs['time_scale'] = QLineEdit()
         self.inputs['time_scale'].setPlaceholderText("e.g., 2.0 or 0.5")
         layout.addRow("Time Scale", self.inputs['time_scale'])
