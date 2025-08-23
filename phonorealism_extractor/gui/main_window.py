@@ -11,6 +11,40 @@ import os
 def create_main_window():
     dpg.create_context()
 
+    def perform_analysis(sender, app_data, user_data):
+        file_path = user_data
+        analysis_mode = dpg.get_value("analysis_mode_radio")
+        dpg.hide_item("analysis_options_modal")
+
+        dpg.set_value("status_text", f"Analyzing: {file_path} with mode: {analysis_mode}")
+        y, sr = librosa.load(file_path, sr=None)
+        
+        N_FFT = 2048
+        HOP_LENGTH = 512
+        stft = librosa.stft(y, n_fft=N_FFT, hop_length=HOP_LENGTH)
+        duration = librosa.get_duration(S=stft, sr=sr, hop_length=HOP_LENGTH)
+
+        # Analyze for 32 harmonics to get 16 correct ones
+        partials = analyze_audio(file_path, num_harmonics=32, analysis_mode=analysis_mode)
+        if partials:
+            # Filter for even-numbered harmonics (which are the actual harmonics)
+            filtered_partials = [p for i, p in enumerate(partials) if (i + 1) % 2 == 0]
+
+            dpg.set_value("status_text", f"Analysis complete for: {file_path}")
+            visualize_partials(filtered_partials, duration, sr, y, stft)
+            dpg.set_item_user_data("export_csv_button", (filtered_partials, file_path))
+            dpg.set_item_user_data("export_wav_button", (filtered_partials, file_path, sr, duration))
+            dpg.set_item_user_data("export_log_svg_button", (filtered_partials, file_path, sr, duration))
+            dpg.set_item_user_data("export_lin_svg_button", (filtered_partials, file_path, sr, duration))
+            dpg.set_item_user_data("export_waveform_svg_button", (filtered_partials, file_path, sr, duration))
+
+    with dpg.window(label="Analysis Options", modal=True, show=False, tag="analysis_options_modal", width=400):
+        dpg.add_text("Choose an analysis method:")
+        dpg.add_radio_button(items=["Isolated Harmonics", "Spectral Bleed Through", "Isolated Artifacts"], tag="analysis_mode_radio", default_value="Isolated Harmonics")
+        with dpg.group(horizontal=True):
+            dpg.add_button(label="Analyze", callback=perform_analysis, tag="analyze_button")
+            dpg.add_button(label="Cancel", callback=lambda: dpg.hide_item("analysis_options_modal"))
+
     def handle_file_selection(sender, app_data):
         file_path = app_data['file_path_name']
         if not os.path.isfile(file_path):
@@ -33,27 +67,8 @@ def create_main_window():
             except Exception as e:
                 dpg.set_value("status_text", f"Error loading CSV: {e}")
         else:
-            dpg.set_value("status_text", f"Analyzing: {file_path}")
-            y, sr = librosa.load(file_path, sr=None)
-            
-            N_FFT = 2048
-            HOP_LENGTH = 512
-            stft = librosa.stft(y, n_fft=N_FFT, hop_length=HOP_LENGTH)
-            duration = librosa.get_duration(S=stft, sr=sr, hop_length=HOP_LENGTH)
-
-            # Analyze for 32 harmonics to get 16 correct ones
-            partials = analyze_audio(file_path, num_harmonics=32)
-            if partials:
-                # Filter for even-numbered harmonics (which are the actual harmonics)
-                filtered_partials = [p for i, p in enumerate(partials) if (i + 1) % 2 == 0]
-
-                dpg.set_value("status_text", f"Analysis complete for: {file_path}")
-                visualize_partials(filtered_partials, duration, sr, y, stft)
-                dpg.set_item_user_data("export_csv_button", (filtered_partials, file_path))
-                dpg.set_item_user_data("export_wav_button", (filtered_partials, file_path, sr, duration))
-                dpg.set_item_user_data("export_log_svg_button", (filtered_partials, file_path, sr, duration))
-                dpg.set_item_user_data("export_lin_svg_button", (filtered_partials, file_path, sr, duration))
-                dpg.set_item_user_data("export_waveform_svg_button", (filtered_partials, file_path, sr, duration))
+            dpg.set_item_user_data("analyze_button", file_path)
+            dpg.show_item("analysis_options_modal")
 
     # Create file dialog once
     with dpg.file_dialog(directory_selector=False, show=False, callback=handle_file_selection, tag="file_dialog_id"):

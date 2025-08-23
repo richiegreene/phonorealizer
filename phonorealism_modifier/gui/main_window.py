@@ -8,7 +8,7 @@ from phonorealism_extractor.core.analyzer import analyze_audio # New import
 
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QToolBar,
-    QMessageBox, QDialog, QInputDialog # Added QInputDialog
+    QMessageBox, QDialog, QFormLayout, QSpinBox, QComboBox, QDialogButtonBox
 )
 from PySide6.QtGui import QAction, QKeySequence
 from gui.selection_dialog import SelectionDialog
@@ -22,6 +22,37 @@ from core.editor import HarmonicEditor
 from .export_dialog import ExportDialog
 from core.exporter import Exporter
 from .perform_window import PerformWindow
+
+class AnalysisOptionsDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Analysis Options")
+        
+        self.layout = QVBoxLayout(self)
+        
+        self.formLayout = QFormLayout()
+        self.num_harmonics_spinbox = QSpinBox()
+        self.num_harmonics_spinbox.setRange(1, 128)
+        self.num_harmonics_spinbox.setValue(32)
+        self.formLayout.addRow("Number of Harmonics:", self.num_harmonics_spinbox)
+        
+        self.analysis_mode_combo = QComboBox()
+        self.analysis_mode_combo.addItems(["Isolated Harmonics", "Spectral Bleed Through", "Isolated Artifacts"])
+        self.formLayout.addRow("Analysis Mode:", self.analysis_mode_combo)
+        
+        self.layout.addLayout(self.formLayout)
+        
+        self.buttonBox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        self.buttonBox.accepted.connect(self.accept)
+        self.buttonBox.rejected.connect(self.reject)
+        
+        self.layout.addWidget(self.buttonBox)
+
+    def get_options(self):
+        return {
+            "num_harmonics": self.num_harmonics_spinbox.value(),
+            "analysis_mode": self.analysis_mode_combo.currentText()
+        }
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -122,13 +153,13 @@ class MainWindow(QMainWindow):
             self.plot.set_y_axis_mode("Hz", 261.6256) # Reference pitch doesn't matter for Hz
             self.y_axis_mode_action.setText("Log") # Button should now say "Log"
 
-    def _process_audio_file(self, file_path, num_harmonics): # Added num_harmonics parameter
+    def _process_audio_file(self, file_path, num_harmonics, analysis_mode="Isolated Harmonics"):
         try:
             QApplication.setOverrideCursor(Qt.WaitCursor)
             self.statusBar().showMessage("Analyzing audio, please wait...")
             
             # Analyze audio
-            partials_data = analyze_audio(file_path, num_harmonics=num_harmonics)
+            partials_data = analyze_audio(file_path, num_harmonics=num_harmonics, analysis_mode=analysis_mode)
 
             if not partials_data:
                 QMessageBox.warning(self, "Analysis Failed", "No harmonic data extracted from the audio file.")
@@ -153,7 +184,7 @@ class MainWindow(QMainWindow):
             return new_df
 
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to process audio file: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to process audio file: {str(e)}")
             return None
         finally:
             QApplication.restoreOverrideCursor()
@@ -169,14 +200,14 @@ class MainWindow(QMainWindow):
 
         try:
             if file_extension in ['.wav', '.mp3', '.aif']:
-                num_harmonics, ok = QInputDialog.getInt(self, "Number of Harmonics", "Enter the number of harmonic partials to analyze:", 32, 1, 128, 1)
-                if not ok:
-                    return # User cancelled
-                df = self._process_audio_file(path, num_harmonics) # Pass num_harmonics
-                if df is not None:
-                    self.data.load_dataframe(df)
-                    self.plot.plot_harmonics(self.data)
-                    self.current_file_path = path
+                dialog = AnalysisOptionsDialog(self)
+                if dialog.exec():
+                    options = dialog.get_options()
+                    df = self._process_audio_file(path, options["num_harmonics"], options["analysis_mode"])
+                    if df is not None:
+                        self.data.load_dataframe(df)
+                        self.plot.plot_harmonics(self.data)
+                        self.current_file_path = path
             elif file_extension == '.csv':
                 self.data.load_csv(path)
                 self.plot.plot_harmonics(self.data)
@@ -202,14 +233,14 @@ class MainWindow(QMainWindow):
             insert_time = self.audio_player.media_player.position() / 1000.0
             
             if file_extension in ['.wav', '.mp3', '.aif']:
-                num_harmonics, ok = QInputDialog.getInt(self, "Number of Harmonics", "Enter the number of harmonic partials to analyze:", 32, 1, 128, 1)
-                if not ok:
-                    return # User cancelled
-                new_df = self._process_audio_file(path, num_harmonics) # Pass num_harmonics
-                if new_df is not None:
-                    self.data.insert_data(new_df, insert_time)
-                    self.plot.plot_harmonics(self.data)
-                    QMessageBox.information(self, "Success", f"Audio data inserted at {insert_time:.2f} seconds.")
+                dialog = AnalysisOptionsDialog(self)
+                if dialog.exec():
+                    options = dialog.get_options()
+                    new_df = self._process_audio_file(path, options["num_harmonics"], options["analysis_mode"])
+                    if new_df is not None:
+                        self.data.insert_data(new_df, insert_time)
+                        self.plot.plot_harmonics(self.data)
+                        QMessageBox.information(self, "Success", f"Audio data inserted at {insert_time:.2f} seconds.")
             elif file_extension == '.csv':
                 new_df = pd.read_csv(path)
                 self.data.insert_data(new_df, insert_time)
@@ -278,7 +309,7 @@ class MainWindow(QMainWindow):
             self.plot.plot_harmonics(self.data)
             self.statusBar().showMessage(f"Pasted {len(self.clipboard_data)} points at {insert_time:.2f}s.", 2000)
         except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to paste data:\n{e}")
+            QMessageBox.critical(self, "Error", f"Failed to paste data:\n{str(e)}")
 
     def delete_selected_harmonics(self):
         if not self.plot.selected_points:
