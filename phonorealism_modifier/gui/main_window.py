@@ -10,7 +10,7 @@ from PySide6.QtWidgets import (
     QApplication, QMainWindow, QVBoxLayout, QWidget, QFileDialog, QToolBar,
     QMessageBox, QDialog, QFormLayout, QSpinBox, QComboBox, QDialogButtonBox
 )
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QKeySequence, QUndoStack
 from gui.selection_dialog import SelectionDialog
 from PySide6.QtCore import Qt
 
@@ -22,6 +22,7 @@ from core.editor import HarmonicEditor
 from .export_dialog import ExportDialog
 from core.exporter import Exporter
 from .perform_window import PerformWindow
+from core.commands import EditCommand, DeleteCommand, InsertCommand
 
 class AnalysisOptionsDialog(QDialog):
     def __init__(self, parent=None):
@@ -59,6 +60,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Phonorealism Modifier")
         self.resize(1000, 700)
+        self.undo_stack = QUndoStack(self)
         self.data = HarmonicData()
         self.plot = HarmonicsPlot(self) # Pass self (MainWindow) as parent
         self.audio_player = AudioPlayer(self) # Pass self (MainWindow) as parent
@@ -76,6 +78,8 @@ class MainWindow(QMainWindow):
         # Connect signals
         self.audio_player.playback_position_changed.connect(self.plot.update_playback_marker)
         self.plot.plot_clicked_signal.connect(self.set_playback_position_from_plot)
+        self.undo_stack.indexChanged.connect(lambda: self.plot.plot_harmonics(self.data))
+
 
         self.set_marker_mode = False # Flag for setting playback marker
         self.clipboard_data = None # For copy/cut/paste
@@ -84,6 +88,14 @@ class MainWindow(QMainWindow):
         self.toolbar = QToolBar("Main Toolbar")
         self.addToolBar(self.toolbar)
         self.statusBar() # Initialize status bar
+
+        # Undo/Redo actions
+        undo_action = self.undo_stack.createUndoAction(self, "&Undo")
+        undo_action.setShortcuts(QKeySequence.StandardKey.Undo)
+        redo_action = self.undo_stack.createRedoAction(self, "&Redo")
+        redo_action.setShortcuts(QKeySequence.StandardKey.Redo)
+        self.addAction(undo_action)
+        self.addAction(redo_action)
 
         # File actions
         open_action = QAction("Open", self)
@@ -232,22 +244,23 @@ class MainWindow(QMainWindow):
         try:
             insert_time = self.audio_player.media_player.position() / 1000.0
             
+            new_df = None
             if file_extension in ['.wav', '.mp3', '.aif']:
                 dialog = AnalysisOptionsDialog(self)
                 if dialog.exec():
                     options = dialog.get_options()
                     new_df = self._process_audio_file(path, options["num_harmonics"], options["analysis_mode"])
-                    if new_df is not None:
-                        self.data.insert_data(new_df, insert_time)
-                        self.plot.plot_harmonics(self.data)
-                        QMessageBox.information(self, "Success", f"Audio data inserted at {insert_time:.2f} seconds.")
             elif file_extension == '.csv':
                 new_df = pd.read_csv(path)
-                self.data.insert_data(new_df, insert_time)
-                self.plot.plot_harmonics(self.data)
-                QMessageBox.information(self, "Success", f"CSV inserted at {insert_time:.2f} seconds.")
             else:
                 QMessageBox.warning(self, "Unsupported File Type", "Selected file type is not supported for insertion.")
+                return
+
+            if new_df is not None:
+                command = InsertCommand(self.data, new_df, insert_time, "Insert Data")
+                self.undo_stack.push(command)
+                QMessageBox.information(self, "Success", f"Data inserted at {insert_time:.2f} seconds.")
+
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to insert data:\n{e}")
 
@@ -272,8 +285,8 @@ class MainWindow(QMainWindow):
         if dlg.exec() == QDialog.Accepted:
             edits = dlg.get_data()
             
-            self.harmonic_editor.apply_batch_edits(self.plot.selected_points, edits)
-            self.plot.plot_harmonics(self.data)
+            command = EditCommand(self.data, self.harmonic_editor, self.plot.selected_points, edits, "Batch Edit")
+            self.undo_stack.push(command)
 
     def copy_selected_harmonics(self):
         if not self.plot.selected_points:
@@ -290,11 +303,11 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("No points selected to cut.", 2000)
             return
         self.copy_selected_harmonics()
-        if not self.clipboard_data.empty:
-            self.data.delete_selected_data(self.plot.selected_points)
-            self.plot.selected_points.clear() # Clear selection after cutting
-            self.plot.plot_harmonics(self.data)
-            self.statusBar().showMessage(f"Cut {len(self.clipboard_data)} points.", 2000)
+        if self.clipboard_data is not None and not self.clipboard_data.empty:
+            command = DeleteCommand(self.data, self.harmonic_editor, self.plot.selected_points, "Cut Harmonics")
+            self.undo_stack.push(command)
+            self.plot.selected_points.clear()
+            self.statusBar().showMessage(f"Cut {len(command.selected_indices)} points.", 2000)
         else:
             self.statusBar().showMessage("No data cut.", 2000)
 
@@ -304,23 +317,20 @@ class MainWindow(QMainWindow):
             return
         
         insert_time = self.audio_player.media_player.position() / 1000.0
-        try:
-            self.data.insert_data(self.clipboard_data, insert_time)
-            self.plot.plot_harmonics(self.data)
-            self.statusBar().showMessage(f"Pasted {len(self.clipboard_data)} points at {insert_time:.2f}s.", 2000)
-        except Exception as e:
-            QMessageBox.critical(self, "Error", f"Failed to paste data:\n{str(e)}")
+        
+        command = InsertCommand(self.data, self.clipboard_data, insert_time, "Paste Harmonics")
+        self.undo_stack.push(command)
+        self.statusBar().showMessage(f"Pasted {len(self.clipboard_data)} points at {insert_time:.2f}s.", 2000)
 
     def delete_selected_harmonics(self):
         if not self.plot.selected_points:
             self.statusBar().showMessage("No points selected to delete.", 2000)
             return
         
-        num_deleted = len(self.plot.selected_points)
-        self.data.delete_selected_data(self.plot.selected_points)
-        self.plot.selected_points.clear() # Clear selection after deleting
-        self.plot.plot_harmonics(self.data)
-        self.statusBar().showMessage(f"Deleted {num_deleted} points.", 2000)
+        command = DeleteCommand(self.data, self.harmonic_editor, self.plot.selected_points, "Delete Harmonics")
+        self.undo_stack.push(command)
+        self.plot.selected_points.clear()
+        self.statusBar().showMessage(f"Deleted {len(command.selected_indices)} points.", 2000)
 
     def open_define_selection_dialog(self):
         dlg = SelectionDialog(self, self)

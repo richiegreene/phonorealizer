@@ -90,15 +90,12 @@ class HarmonicEditor:
                     pass  # Ignore malformed ranges
         return final_indices
 
-    def apply_batch_edits(self, selected_points, edits):
+    def get_indices_from_points(self, selected_points):
         if not selected_points:
-            return
-
-        # --- Step 1: Get selected indices ---
+            return []
         try:
-            selected_indices = [spot.data()['index'] for spot in selected_points]
+            return [spot.data()['index'] for spot in selected_points]
         except KeyError:
-            # Fallback for older selection data that might not have the direct index
             point_masks = []
             for spot in selected_points:
                 data = spot.data()
@@ -109,7 +106,13 @@ class HarmonicEditor:
                     (self.data.df['harmonic_index'] == int(data['harmonic_index']))
                 )
             selection_mask = np.logical_or.reduce(point_masks)
-            selected_indices = self.data.df[selection_mask].index
+            return self.data.df[selection_mask].index
+
+    def apply_batch_edits(self, selected_points, edits):
+        if not selected_points:
+            return
+
+        selected_indices = self.get_indices_from_points(selected_points)
         
         # --- Step 2: Apply standard relative/absolute edits ---
         key_map = {'Sec': 'time', 'dB': 'amplitude'}

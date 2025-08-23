@@ -108,7 +108,7 @@ class HarmonicData:
 
     def insert_data(self, new_df, insert_time):
         if new_df.empty:
-            return
+            return []
 
         required_cols = {'time', 'harmonic_index', 'frequency', 'amplitude'}
         if not required_cols.issubset(new_df.columns):
@@ -124,6 +124,7 @@ class HarmonicData:
         if self.df is None or self.df.empty:
             self.df = new_df.copy()
             self.df['time'] = self.df['time'] + insert_time
+            inserted_indices = self.df.index.tolist()
         else:
             df_before_insert = self.df[self.df['time'] < insert_time].copy()
             df_after_insert = self.df[self.df['time'] >= insert_time].copy()
@@ -136,8 +137,12 @@ class HarmonicData:
             shifted_df_after_insert = df_after_insert.copy()
             shifted_df_after_insert['time'] = shifted_df_after_insert['time'] + new_data_duration
 
+            start_index = len(df_before_insert)
+            end_index = start_index + len(shifted_new_df)
+            inserted_indices = list(range(start_index, end_index))
+
             self.df = pd.concat([df_before_insert, shifted_new_df, shifted_df_after_insert], ignore_index=True)
 
         self.grouped = {idx: group.sort_values('time') for idx, group in self.df.groupby('harmonic_index')}
         self._modified = True
-        self._modified = True
+        return inserted_indices
