@@ -430,8 +430,24 @@ class MainWindow(QMainWindow):
             self.set_tool('select_partial')
         elif event.key() == Qt.Key_E:
             self.batch_edit()
+        elif is_modifier_pressed and (event.modifiers() & Qt.ShiftModifier) and event.key() == Qt.Key_T:
+            self.print_selected_points_traceback()
         else:
             super().keyPressEvent(event)
+
+    def print_selected_points_traceback(self):
+        print("--- Selected Points Traceback ---")
+        if not self.plot.selected_points:
+            print("No points currently selected.")
+            return
+
+        for i, spot in enumerate(self.plot.selected_points):
+            data = spot.data()
+            print(f"Point {i+1}: Time={data.get('time', 'N/A'):.4f}s, "
+                  f"Frequency={data.get('frequency', 'N/A'):.4f}Hz, "
+                  f"Amplitude={data.get('amplitude', 'N/A'):.4f}dB, "
+                  f"Harmonic Index={data.get('harmonic_index', 'N/A')}")
+        print("-----------------------------------")
 
     def set_playback_position_from_plot(self, time_position):
         self.audio_player.set_start_position(time_position)

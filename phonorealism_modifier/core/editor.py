@@ -1,5 +1,6 @@
 from fractions import Fraction
 import numpy as np
+import pandas as pd # Added import
 
 import numpy as np
 
@@ -203,10 +204,10 @@ class HarmonicEditor:
         def smoothstep(x):
             return x * x * (3 - 2 * x)
 
-        smoothing_hz_str = edits.get('smoothing_hz', '').strip()
-        if smoothing_hz_str:
+        smoothing_hz = edits.get('smoothing_hz', 0)
+        if smoothing_hz > 0:
             try:
-                smoothing_perc = float(smoothing_hz_str)
+                smoothing_perc = float(smoothing_hz)
                 if 0 <= smoothing_perc <= 100:
                     p = smoothing_perc / 100.0
                     if use_smoothstep:
@@ -221,12 +222,12 @@ class HarmonicEditor:
                 else:
                     print("Smoothing percentage must be between 0 and 100.")
             except ValueError:
-                print(f"Could not parse '{smoothing_hz_str}' for Smoothing Hz. Skipping.")
+                print(f"Could not parse '{smoothing_hz}' for Smoothing Hz. Skipping.")
 
-        smoothing_db_str = edits.get('smoothing_db', '').strip()
-        if smoothing_db_str:
+        smoothing_db = edits.get('smoothing_db', 0)
+        if smoothing_db > 0:
             try:
-                smoothing_perc = float(smoothing_db_str)
+                smoothing_perc = float(smoothing_db)
                 if 0 <= smoothing_perc <= 100:
                     p = smoothing_perc / 100.0
                     if use_smoothstep:
@@ -241,9 +242,145 @@ class HarmonicEditor:
                 else:
                     print("Smoothing percentage must be between 0 and 100.")
             except ValueError:
-                print(f"Could not parse '{smoothing_db_str}' for Smoothing dB. Skipping.")
+                print(f"Could not parse '{smoothing_db}' for Smoothing dB. Skipping.")
 
-        # --- Step 5: Apply Snapping (to the newly modified frequencies) ---
+        # --- Step 5: Apply Sliding (Linear Interpolation) ---
+        sliding_percentage = edits.get('sliding_percentage', 0)
+        if sliding_percentage > 0:
+            p = sliding_percentage / 100.0
+            
+            # Get only the selected data points
+            selected_df = self.data.df.loc[selected_indices].copy()
+
+            # Group by harmonic_index and process each harmonic separately
+            for h_idx, group in selected_df.groupby('harmonic_index'):
+                # Sort by time to ensure correct chain identification
+                group = group.sort_values(by='time')
+                
+                if len(group) < 2:
+                    continue # Need at least two points to form a chain
+
+                # Calculate typical time step for this group
+                time_diffs = group['time'].diff().dropna()
+                if not time_diffs.empty:
+                    # Find the smallest non-zero time difference
+                    min_time_diff = time_diffs[time_diffs > 1e-9].min() # Use a small epsilon to avoid zero
+                    if pd.isna(min_time_diff):
+                        continue # All time diffs are zero or very small, cannot determine typical step
+                    gap_threshold = min_time_diff * 1.5 # A gap is 1.5 times larger than the smallest step
+                else:
+                    continue # Cannot determine time differences
+
+                # Identify chains of sequentially selected partials
+                chains = []
+                current_chain_indices = [group.index[0]]
+
+                for i in range(1, len(group)):
+                    time_diff = group.iloc[i]['time'] - group.iloc[i-1]['time']
+                    # If the time difference is significantly larger than the typical step, start a new chain
+                    if time_diff > gap_threshold:
+                        chains.append(current_chain_indices)
+                        current_chain_indices = [group.index[i]]
+                    else:
+                        current_chain_indices.append(group.index[i])
+                chains.append(current_chain_indices) # Add the last chain
+
+                for chain_indices in chains:
+                    if len(chain_indices) >= 2:
+                        chain_data = self.data.df.loc[chain_indices]
+                        start_time = chain_data.iloc[0]['time']
+                        end_time = chain_data.iloc[-1]['time']
+                        start_freq = chain_data.iloc[0]['frequency']
+                        end_freq = chain_data.iloc[-1]['frequency']
+
+                        # Apply linear interpolation for points within the chain
+                        for idx in chain_indices:
+                            current_point_time = self.data.df.loc[idx, 'time']
+                            original_freq = self.data.df.loc[idx, 'frequency']
+
+                            if end_time - start_time != 0:
+                                # Calculate interpolated frequency
+                                interpolated_freq = start_freq + (current_point_time - start_time) * \
+                                                    (end_freq - start_freq) / (end_time - start_time)
+                            else:
+                                # Handle case where start and end times are the same (e.g., only two points at same time)
+                                interpolated_freq = start_freq # Or end_freq, they are the same
+                            
+                            # Blend original and interpolated frequency based on sliding_percentage
+                            new_freq = original_freq * (1 - p) + interpolated_freq * p
+                            
+                            # Update the frequency in the main DataFrame
+                            self.data.df.loc[idx, 'frequency'] = new_freq
+
+        # --- Step 5.1: Apply Dynamic (Linear Interpolation for Amplitude) ---
+        dynamic_percentage = edits.get('dynamic_percentage', 0)
+        if dynamic_percentage > 0:
+            p = dynamic_percentage / 100.0
+            
+            # Get only the selected data points
+            selected_df = self.data.df.loc[selected_indices].copy()
+
+            # Group by harmonic_index and process each harmonic separately
+            for h_idx, group in selected_df.groupby('harmonic_index'):
+                # Sort by time to ensure correct chain identification
+                group = group.sort_values(by='time')
+                
+                if len(group) < 2:
+                    continue # Need at least two points to form a chain
+
+                # Calculate typical time step for this group
+                time_diffs = group['time'].diff().dropna()
+                if not time_diffs.empty:
+                    # Find the smallest non-zero time difference
+                    min_time_diff = time_diffs[time_diffs > 1e-9].min() # Use a small epsilon to avoid zero
+                    if pd.isna(min_time_diff):
+                        continue # All time diffs are zero or very small, cannot determine typical step
+                    gap_threshold = min_time_diff * 1.5 # A gap is 1.5 times larger than the smallest step
+                else:
+                    continue # Cannot determine time differences
+
+                # Identify chains of sequentially selected partials
+                chains = []
+                current_chain_indices = [group.index[0]]
+
+                for i in range(1, len(group)):
+                    time_diff = group.iloc[i]['time'] - group.iloc[i-1]['time']
+                    # If the time difference is significantly larger than the typical step, start a new chain
+                    if time_diff > gap_threshold:
+                        chains.append(current_chain_indices)
+                        current_chain_indices = [group.index[i]]
+                    else:
+                        current_chain_indices.append(group.index[i])
+                chains.append(current_chain_indices) # Add the last chain
+
+                for chain_indices in chains:
+                    if len(chain_indices) >= 2:
+                        chain_data = self.data.df.loc[chain_indices]
+                        start_time = chain_data.iloc[0]['time']
+                        end_time = chain_data.iloc[-1]['time']
+                        start_amp = chain_data.iloc[0]['amplitude']
+                        end_amp = chain_data.iloc[-1]['amplitude']
+
+                        # Apply linear interpolation for points within the chain
+                        for idx in chain_indices:
+                            current_point_time = self.data.df.loc[idx, 'time']
+                            original_amp = self.data.df.loc[idx, 'amplitude']
+
+                            if end_time - start_time != 0:
+                                # Calculate interpolated amplitude
+                                interpolated_amp = start_amp + (current_point_time - start_time) * \
+                                                    (end_amp - start_amp) / (end_time - start_time)
+                            else:
+                                # Handle case where start and end times are the same (e.g., only two points at same time)
+                                interpolated_amp = start_amp # Or end_amp, they are the same
+                            
+                            # Blend original and interpolated amplitude based on dynamic_percentage
+                            new_amp = original_amp * (1 - p) + interpolated_amp * p
+                            
+                            # Update the amplitude in the main DataFrame
+                            self.data.df.loc[idx, 'amplitude'] = new_amp
+
+        # --- Step 6: Apply Snapping (to the newly modified frequencies) ---
         try:
             f_ref = float(edits['ref_pitch'])
         except (ValueError, TypeError):

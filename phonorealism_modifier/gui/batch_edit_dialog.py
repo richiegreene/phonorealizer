@@ -1,7 +1,7 @@
 from fractions import Fraction
 import numpy as np
 from PySide6.QtWidgets import (
-    QDialog, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QCheckBox, QComboBox # Added QComboBox
+    QDialog, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QCheckBox, QComboBox, QSpinBox, QVBoxLayout, QGroupBox # Added QSpinBox, QVBoxLayout, QGroupBox
 )
 import pyqtgraph as pg
 
@@ -9,76 +9,116 @@ class BatchEditDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Edit Selected")
-        self.setStyleSheet("QLineEdit::placeholder { color: rgb(53, 53, 53); }")
-        layout = QFormLayout(self)
+        
+        main_layout = QVBoxLayout(self)
         self.inputs = {}
+        placeholder_style = "QLineEdit::placeholder { color: rgb(53, 53, 53); }"
 
-        # Standard Edits
+        # Shifting Group
+        shifting_group = QGroupBox("Shifting")
+        shifting_layout = QFormLayout()
         for key in ['Sec', 'Hz', 'Cents', 'dB']:
             le = QLineEdit()
             le.setPlaceholderText("e.g., +10 or -5.5")
-            layout.addRow(key, le)
+            le.setStyleSheet(placeholder_style)
+            shifting_layout.addRow(key, le)
             self.inputs[key] = le
+        shifting_group.setLayout(shifting_layout)
+        main_layout.addWidget(shifting_group)
 
-        # Scaling
-        layout.addRow(pg.QtWidgets.QLabel("———" + " Scaling ———")) # Separator
+        # Scaling Group
+        scaling_group = QGroupBox("Scaling")
+        scaling_layout = QFormLayout()
         
         self.inputs['pitch_scale_factor'] = QLineEdit()
         self.inputs['pitch_scale_factor'].setPlaceholderText("e.g. 2 or 5/4")
-        layout.addRow("Pitch Scaling", self.inputs['pitch_scale_factor'])
+        self.inputs['pitch_scale_factor'].setStyleSheet(placeholder_style)
+        scaling_layout.addRow("Pitch Scaling", self.inputs['pitch_scale_factor'])
 
         self.inputs['pitch_scale_fixed_partial'] = QLineEdit()
         self.inputs['pitch_scale_fixed_partial'].setPlaceholderText("1")
-        layout.addRow("Fixed Partial", self.inputs['pitch_scale_fixed_partial'])
+        self.inputs['pitch_scale_fixed_partial'].setStyleSheet(placeholder_style)
+        scaling_layout.addRow("Fixed Partial", self.inputs['pitch_scale_fixed_partial'])
 
         self.inputs['amplitude_scale_factor'] = QLineEdit()
         self.inputs['amplitude_scale_factor'].setPlaceholderText("e.g. 0.5 or 1/16")
-        layout.addRow("Dynamic Scaling", self.inputs['amplitude_scale_factor'])
+        self.inputs['amplitude_scale_factor'].setStyleSheet(placeholder_style)
+        scaling_layout.addRow("Dynamic Scaling", self.inputs['amplitude_scale_factor'])
 
         self.inputs['amplitude_scale_fixed_partial'] = QLineEdit()
         self.inputs['amplitude_scale_fixed_partial'].setPlaceholderText("1")
-        layout.addRow("Fixed Partial", self.inputs['amplitude_scale_fixed_partial'])
+        self.inputs['amplitude_scale_fixed_partial'].setStyleSheet(placeholder_style)
+        scaling_layout.addRow("Fixed Partial", self.inputs['amplitude_scale_fixed_partial'])
 
         self.inputs['time_scale'] = QLineEdit()
         self.inputs['time_scale'].setPlaceholderText("e.g., 2.0 or 0.5")
-        layout.addRow("Time Scale", self.inputs['time_scale'])
+        self.inputs['time_scale'].setStyleSheet(placeholder_style)
+        scaling_layout.addRow("Time Scale", self.inputs['time_scale'])
+        scaling_group.setLayout(scaling_layout)
+        main_layout.addWidget(scaling_group)
 
-        # Smoothing
-        layout.addRow(pg.QtWidgets.QLabel("———" + " Smoothing ———")) # Separator
-        self.inputs['smoothing_hz'] = QLineEdit()
-        self.inputs['smoothing_hz'].setPlaceholderText("0-100")
-        layout.addRow("Hz", self.inputs['smoothing_hz'])
+        # Smoothing Group
+        smoothing_group = QGroupBox("Smoothing")
+        smoothing_layout = QFormLayout()
+        self.inputs['smoothing_hz'] = QSpinBox()
+        self.inputs['smoothing_hz'].setRange(0, 100)
+        self.inputs['smoothing_hz'].setValue(0)
+        smoothing_layout.addRow("Pitch", self.inputs['smoothing_hz'])
 
-        self.inputs['smoothing_db'] = QLineEdit()
-        self.inputs['smoothing_db'].setPlaceholderText("0-100")
-        layout.addRow("dB", self.inputs['smoothing_db'])
+        self.inputs['smoothing_db'] = QSpinBox()
+        self.inputs['smoothing_db'].setRange(0, 100)
+        self.inputs['smoothing_db'].setValue(0)
+        smoothing_layout.addRow("Dynamic", self.inputs['smoothing_db'])
 
         self.inputs['smoothstep'] = QCheckBox()
-        layout.addRow("Smoothstep", self.inputs['smoothstep'])
+        smoothing_layout.addRow("Smoothstep", self.inputs['smoothstep'])
+        smoothing_group.setLayout(smoothing_layout)
+        main_layout.addWidget(smoothing_group)
 
-        # Snapping Edits
-        layout.addRow(pg.QtWidgets.QLabel("———" + " Snapping ———")) # Separator
-        
+        # Sliding Group
+        sliding_group = QGroupBox("Sliding")
+        sliding_layout = QFormLayout()
+        self.inputs['sliding_percentage'] = QSpinBox()
+        self.inputs['sliding_percentage'].setRange(0, 100)
+        self.inputs['sliding_percentage'].setValue(0) # Default to no slide
+        sliding_layout.addRow("Pitch", self.inputs['sliding_percentage'])
+
+        self.inputs['dynamic_percentage'] = QSpinBox()
+        self.inputs['dynamic_percentage'].setRange(0, 100)
+        self.inputs['dynamic_percentage'].setValue(0) # Default to no dynamic
+        sliding_layout.addRow("Dynamic", self.inputs['dynamic_percentage'])
+
+        sliding_group.setLayout(sliding_layout)
+        main_layout.addWidget(sliding_group)
+
+        # Snapping Group
+        snapping_group = QGroupBox("Snapping")
+        snapping_layout = QFormLayout()
         self.inputs['ref_pitch'] = QLineEdit("261.6256")
-        layout.addRow("Reference Pitch (Hz)", self.inputs['ref_pitch'])
+        snapping_layout.addRow("Reference Pitch (Hz)", self.inputs['ref_pitch'])
 
         self.inputs['edo'] = QLineEdit()
         self.inputs['edo'].setPlaceholderText("e.g., 12")
-        layout.addRow("Snap to EDO", self.inputs['edo'])
+        self.inputs['edo'].setStyleSheet(placeholder_style)
+        snapping_layout.addRow("Snap to EDO", self.inputs['edo'])
 
         self.inputs['ratios'] = QLineEdit()
         self.inputs['ratios'].setPlaceholderText("e.g., 1/1, 5/4, 3/2")
-        layout.addRow("Snap to Ratios", self.inputs['ratios'])
+        self.inputs['ratios'].setStyleSheet(placeholder_style)
+        snapping_layout.addRow("Snap to Ratios", self.inputs['ratios'])
 
-        # New: Snap to Scale
         self.inputs['scale'] = QLineEdit()
         self.inputs['scale'].setPlaceholderText("e.g., 1/1, 9/8, 5/4, 4/3, 3/2, 5/3, 15/8")
-        layout.addRow("Snap to Scale", self.inputs['scale'])
+        self.inputs['scale'].setStyleSheet(placeholder_style)
+        snapping_layout.addRow("Snap to Scale", self.inputs['scale'])
 
         self.inputs['octave_repeat'] = QCheckBox()
-        self.inputs['octave_repeat'].setChecked(True) # Set to true by default
-        layout.addRow("Octave Repeating", self.inputs['octave_repeat'])
+        self.inputs['octave_repeat'].setChecked(True)
+        snapping_layout.addRow("Octave Repeating", self.inputs['octave_repeat'])
+        snapping_group.setLayout(snapping_layout)
+        main_layout.addWidget(snapping_group)
 
+        # OK/Cancel Buttons
         btn_layout = QHBoxLayout()
         ok_btn = QPushButton("OK")
         cancel_btn = QPushButton("Cancel")
@@ -86,7 +126,7 @@ class BatchEditDialog(QDialog):
         cancel_btn.clicked.connect(self.reject)
         btn_layout.addWidget(ok_btn)
         btn_layout.addWidget(cancel_btn)
-        layout.addRow(btn_layout)
+        main_layout.addLayout(btn_layout)
 
     def get_data(self):
         data = {}
@@ -95,4 +135,6 @@ class BatchEditDialog(QDialog):
                 data[key] = widget.text()
             elif isinstance(widget, QCheckBox):
                 data[key] = widget.isChecked()
+            elif isinstance(widget, QSpinBox): # Handle QSpinBox
+                data[key] = widget.value()
         return data
