@@ -45,8 +45,7 @@ class BatchEditDialog(QDialog):
         self.inputs['pitch_scale_factor'].setStyleSheet(placeholder_style)
         scaling_layout.addRow("Pitch Scaling", self.inputs['pitch_scale_factor'])
 
-        self.inputs['pitch_scale_fixed_partial'] = QLineEdit()
-        self.inputs['pitch_scale_fixed_partial'].setPlaceholderText("1")
+        self.inputs['pitch_scale_fixed_partial'] = QLineEdit("1")
         self.inputs['pitch_scale_fixed_partial'].setStyleSheet(placeholder_style)
         scaling_layout.addRow("Fixed Partial", self.inputs['pitch_scale_fixed_partial'])
 
@@ -55,8 +54,7 @@ class BatchEditDialog(QDialog):
         self.inputs['amplitude_scale_factor'].setStyleSheet(placeholder_style)
         scaling_layout.addRow("Dynamic Scaling", self.inputs['amplitude_scale_factor'])
 
-        self.inputs['amplitude_scale_fixed_partial'] = QLineEdit()
-        self.inputs['amplitude_scale_fixed_partial'].setPlaceholderText("1")
+        self.inputs['amplitude_scale_fixed_partial'] = QLineEdit("1")
         self.inputs['amplitude_scale_fixed_partial'].setStyleSheet(placeholder_style)
         scaling_layout.addRow("Fixed Partial", self.inputs['amplitude_scale_fixed_partial'])
 
@@ -135,9 +133,11 @@ class BatchEditDialog(QDialog):
         slope_layout.addRow("Apply", self.inputs['apply_slope'])
         self.inputs['y_rate'] = QSpinBox()
         self.inputs['y_rate'].setRange(0, 100)
+        self.inputs['y_rate'].setValue(100)
         slope_layout.addRow("Y Rate", self.inputs['y_rate'])
         self.inputs['x_rate'] = QSpinBox()
         self.inputs['x_rate'].setRange(0, 100)
+        self.inputs['x_rate'].setValue(100)
         slope_layout.addRow("X Rate", self.inputs['x_rate'])
         slope_group.setLayout(slope_layout)
         main_layout.addWidget(slope_group)
