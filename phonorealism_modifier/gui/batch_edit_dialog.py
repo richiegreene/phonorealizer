@@ -131,16 +131,39 @@ class BatchEditDialog(QDialog):
         slope_layout = QFormLayout()
         self.inputs['apply_slope'] = QCheckBox()
         slope_layout.addRow("Apply", self.inputs['apply_slope'])
+
+        # Fixed Slope
+        self.inputs['fixed_slope'] = QCheckBox("Fixed")
+        slope_layout.addRow(self.inputs['fixed_slope'])
+        self.inputs['slope_sec'] = QLineEdit("2")
+        self.inputs['slope_cents'] = QLineEdit("702")
+        slope_layout.addRow("  Sec", self.inputs['slope_sec'])
+        slope_layout.addRow("  Cents", self.inputs['slope_cents'])
+
+        # Variable Slope
+        self.inputs['variable_slope'] = QCheckBox("Variable")
+        slope_layout.addRow(self.inputs['variable_slope'])
         self.inputs['y_rate'] = QSpinBox()
         self.inputs['y_rate'].setRange(0, 100)
         self.inputs['y_rate'].setValue(100)
-        slope_layout.addRow("Y Rate", self.inputs['y_rate'])
         self.inputs['x_rate'] = QSpinBox()
         self.inputs['x_rate'].setRange(0, 100)
         self.inputs['x_rate'].setValue(100)
-        slope_layout.addRow("X Rate", self.inputs['x_rate'])
+        slope_layout.addRow("  X", self.inputs['x_rate'])
+        slope_layout.addRow("  Y", self.inputs['y_rate'])
+
         slope_group.setLayout(slope_layout)
         main_layout.addWidget(slope_group)
+
+        # Connect signals for enabling/disabling slope modes
+        self.inputs['fixed_slope'].toggled.connect(self.toggle_slope_mode)
+        self.inputs['variable_slope'].toggled.connect(self.toggle_slope_mode)
+        self.inputs['apply_slope'].toggled.connect(self.toggle_slope_controls)
+
+        # Set initial state
+        self.inputs['variable_slope'].setChecked(True)
+        self.toggle_slope_mode(True)
+        self.toggle_slope_controls(False)
         
         # Set the container widget for the scroll area
         scroll_area.setWidget(container)
@@ -157,6 +180,27 @@ class BatchEditDialog(QDialog):
         btn_layout.addWidget(ok_btn)
         btn_layout.addWidget(cancel_btn)
         dialog_layout.addLayout(btn_layout)
+
+    def toggle_slope_mode(self, checked):
+        sender = self.sender()
+        if checked:
+            if sender == self.inputs['fixed_slope']:
+                self.inputs['variable_slope'].setChecked(False)
+            elif sender == self.inputs['variable_slope']:
+                self.inputs['fixed_slope'].setChecked(False)
+        self.toggle_slope_controls(self.inputs['apply_slope'].isChecked())
+
+    def toggle_slope_controls(self, checked):
+        is_fixed = self.inputs['fixed_slope'].isChecked()
+        is_variable = self.inputs['variable_slope'].isChecked()
+
+        self.inputs['fixed_slope'].setEnabled(checked)
+        self.inputs['variable_slope'].setEnabled(checked)
+
+        self.inputs['slope_sec'].setEnabled(checked and is_fixed)
+        self.inputs['slope_cents'].setEnabled(checked and is_fixed)
+        self.inputs['x_rate'].setEnabled(checked and is_variable)
+        self.inputs['y_rate'].setEnabled(checked and is_variable)
 
     def get_data(self):
         data = {}

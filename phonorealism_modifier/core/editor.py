@@ -120,29 +120,46 @@ class HarmonicEditor:
         apply_slope = edits.get('apply_slope', False)
         slope_factors = pd.Series(1.0, index=selected_indices)
         if apply_slope:
-            y_rate = edits.get('y_rate', 0) / 100.0
-            x_rate = edits.get('x_rate', 0) / 100.0
+            is_fixed_slope = edits.get('fixed_slope', False)
+            is_variable_slope = edits.get('variable_slope', True)
 
-            if y_rate > 0 or x_rate > 0:
-                min_freq, max_freq = selected_df['frequency'].min(), selected_df['frequency'].max()
+            if is_variable_slope:
+                y_rate = edits.get('y_rate', 100) / 100.0
+                x_rate = edits.get('x_rate', 100) / 100.0
+                if y_rate > 0 or x_rate > 0:
+                    min_freq, max_freq = selected_df['frequency'].min(), selected_df['frequency'].max()
+                    min_time, max_time = selected_df['time'].min(), selected_df['time'].max()
+                    center_freq = (min_freq + max_freq) / 2
+                    center_time = (min_time + max_time) / 2
+                    norm_freq = (selected_df['frequency'] - min_freq) / ((max_freq - min_freq) or 1)
+                    norm_time = (selected_df['time'] - min_time) / ((max_time - min_time) or 1)
+                    distances = np.sqrt(((norm_time - 0.5) * x_rate * 2)**2 + ((norm_freq - 0.5) * y_rate * 2)**2)
+                    max_dist = distances.max()
+                    if max_dist > 0:
+                        slope_factors = 1 - (distances / max_dist)
+                    else:
+                        slope_factors = pd.Series(1.0, index=selected_indices)
+            
+            elif is_fixed_slope:
+                slope_sec = float(edits.get('slope_sec', 2.0))
+                slope_cents = float(edits.get('slope_cents', 702.0))
                 min_time, max_time = selected_df['time'].min(), selected_df['time'].max()
+                min_freq, max_freq = selected_df['frequency'].min(), selected_df['frequency'].max()
 
-                center_freq = (min_freq + max_freq) / 2
-                center_time = (min_time + max_time) / 2
+                def to_cents(f, ref=20.0):
+                    return 1200 * np.log2(f / ref) if f > 0 else 0
 
-                # Normalize coordinates to a [0, 1] range
-                norm_freq = (selected_df['frequency'] - min_freq) / ((max_freq - min_freq) or 1)
-                norm_time = (selected_df['time'] - min_time) / ((max_time - min_time) or 1)
+                min_freq_cents = to_cents(min_freq)
+                max_freq_cents = to_cents(max_freq)
 
-                # Calculate weighted distance from center (0.5, 0.5 in normalized space)
-                distances = np.sqrt(((norm_time - 0.5) * x_rate * 2)**2 + ((norm_freq - 0.5) * y_rate * 2)**2)
-                
-                max_dist = distances.max()
-                if max_dist > 0:
-                    # Factor is 1 at center, 0 at the furthest point
-                    slope_factors = 1 - (distances / max_dist)
-                else:
-                    slope_factors = pd.Series(1.0, index=selected_indices) # All points are at the center
+                def get_fixed_slope(row):
+                    dist_t = min(row['time'] - min_time, max_time - row['time'])
+                    dist_f_cents = min(to_cents(row['frequency']) - min_freq_cents, max_freq_cents - to_cents(row['frequency']))
+                    factor_t = min(1.0, dist_t / slope_sec if slope_sec > 0 else 1.0)
+                    factor_f = min(1.0, dist_f_cents / slope_cents if slope_cents > 0 else 1.0)
+                    return factor_t * factor_f
+
+                slope_factors = selected_df.apply(get_fixed_slope, axis=1)
 
         # --- Step 2: Apply standard relative/absolute edits ---
         key_map = {'Sec': 'time', 'dB': 'amplitude'}
