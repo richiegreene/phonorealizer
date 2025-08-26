@@ -114,7 +114,36 @@ class HarmonicEditor:
             return
 
         selected_indices = self.get_indices_from_points(selected_points)
-        
+        selected_df = self.data.df.loc[selected_indices].copy()
+
+        # --- Slope Calculation ---
+        apply_slope = edits.get('apply_slope', False)
+        slope_factors = pd.Series(1.0, index=selected_indices)
+        if apply_slope:
+            y_rate = edits.get('y_rate', 0) / 100.0
+            x_rate = edits.get('x_rate', 0) / 100.0
+
+            if y_rate > 0 or x_rate > 0:
+                min_freq, max_freq = selected_df['frequency'].min(), selected_df['frequency'].max()
+                min_time, max_time = selected_df['time'].min(), selected_df['time'].max()
+
+                center_freq = (min_freq + max_freq) / 2
+                center_time = (min_time + max_time) / 2
+
+                # Normalize coordinates to a [0, 1] range
+                norm_freq = (selected_df['frequency'] - min_freq) / ((max_freq - min_freq) or 1)
+                norm_time = (selected_df['time'] - min_time) / ((max_time - min_time) or 1)
+
+                # Calculate weighted distance from center (0.5, 0.5 in normalized space)
+                distances = np.sqrt(((norm_time - 0.5) * x_rate * 2)**2 + ((norm_freq - 0.5) * y_rate * 2)**2)
+                
+                max_dist = distances.max()
+                if max_dist > 0:
+                    # Factor is 1 at center, 0 at the furthest point
+                    slope_factors = 1 - (distances / max_dist)
+                else:
+                    slope_factors = pd.Series(1.0, index=selected_indices) # All points are at the center
+
         # --- Step 2: Apply standard relative/absolute edits ---
         key_map = {'Sec': 'time', 'dB': 'amplitude'}
         for key, col_name in key_map.items():
@@ -123,49 +152,59 @@ class HarmonicEditor:
                 try:
                     val_float = float(val_str)
                     if val_str.startswith(('+', '-')):
-                        self.data.df.loc[selected_indices, col_name] += val_float
+                        self.data.df.loc[selected_indices, col_name] += val_float * slope_factors
                     else:
-                        self.data.df.loc[selected_indices, col_name] = val_float
+                        original_values = self.data.df.loc[selected_indices, col_name]
+                        self.data.df.loc[selected_indices, col_name] = original_values * (1 - slope_factors) + val_float * slope_factors
                 except ValueError:
                     print(f"Could not parse '{val_str}' for {key}. Skipping.")
 
-        # Frequency edits (Hz and Cents) are applied per point due to their nature
-        for idx in selected_indices:
-            current_freq = self.data.df.loc[idx, 'frequency']
-            hz_str = edits['Hz'].strip()
-            if hz_str:
-                try:
-                    hz_float = float(hz_str)
-                    if hz_str.startswith(('+', '-')):
-                        current_freq += hz_float
-                    else:
-                        current_freq = hz_float
-                except ValueError:
-                    print(f"Could not parse '{hz_str}' for Hz. Skipping.")
-            
-            cents_str = edits['Cents'].strip()
-            if cents_str:
-                try:
-                    cents_float = float(cents_str)
-                    current_freq *= (2 ** (cents_float / 1200.0))
-                except ValueError:
-                    print(f"Could not parse '{cents_str}' for Cents. Skipping.")
-            
-            self.data.df.loc[idx, 'frequency'] = current_freq
+        # Frequency edits (Hz and Cents)
+        hz_str = edits['Hz'].strip()
+        cents_str = edits['Cents'].strip()
+        if hz_str or cents_str:
+            for idx in selected_indices:
+                slope_factor = slope_factors.get(idx, 1.0)
+                if slope_factor == 0: continue
+
+                original_freq = self.data.df.loc[idx, 'frequency']
+                current_freq = original_freq
+                
+                if hz_str:
+                    try:
+                        hz_float = float(hz_str)
+                        if hz_str.startswith(('+', '-')):
+                            current_freq += hz_float * slope_factor
+                        else:
+                            current_freq = original_freq * (1 - slope_factor) + hz_float * slope_factor
+                    except ValueError:
+                        print(f"Could not parse '{hz_str}' for Hz. Skipping.")
+                
+                if cents_str:
+                    try:
+                        cents_float = float(cents_str)
+                        target_freq = current_freq * (2 ** (cents_float / 1200.0))
+                        current_freq = current_freq * (1 - slope_factor) + target_freq * slope_factor
+                    except ValueError:
+                        print(f"Could not parse '{cents_str}' for Cents. Skipping.")
+                
+                self.data.df.loc[idx, 'frequency'] = current_freq
 
         # --- Step 3: Scaling ---
-        # Time Scaling
         time_scale_str = edits.get('time_scale', '').strip()
         if time_scale_str:
             try:
                 scale_factor = float(time_scale_str)
                 if scale_factor > 0:
                     min_time = self.data.df.loc[selected_indices, 'time'].min()
-                    self.data.df.loc[selected_indices, 'time'] = min_time + (self.data.df.loc[selected_indices, 'time'] - min_time) * scale_factor
+                    for idx in selected_indices:
+                        slope_factor = slope_factors.get(idx, 1.0)
+                        original_time = self.data.df.loc[idx, 'time']
+                        scaled_time = min_time + (original_time - min_time) * scale_factor
+                        self.data.df.loc[idx, 'time'] = original_time * (1 - slope_factor) + scaled_time * slope_factor
             except ValueError:
                 print(f"Could not parse '{time_scale_str}' for Time Scale. Skipping.")
-        
-        # Pitch Scaling
+
         pitch_scale_factor_str = edits.get('pitch_scale_factor', '').strip()
         pitch_scale_fixed_partial_str = edits.get('pitch_scale_fixed_partial', '').strip()
         if pitch_scale_factor_str and pitch_scale_fixed_partial_str:
@@ -174,15 +213,21 @@ class HarmonicEditor:
                 fixed_partial = int(pitch_scale_fixed_partial_str)
 
                 for idx in selected_indices:
+                    slope_factor = slope_factors.get(idx, 1.0)
+                    if slope_factor == 0: continue
+                    original_freq = self.data.df.loc[idx, 'frequency']
                     harmonic_index = self.data.df.loc[idx, 'harmonic_index']
+                    
                     if harmonic_index > fixed_partial:
-                        self.data.df.loc[idx, 'frequency'] *= pitch_scale_factor
+                        scaled_freq = original_freq * pitch_scale_factor
                     elif harmonic_index < fixed_partial:
-                        self.data.df.loc[idx, 'frequency'] /= pitch_scale_factor
+                        scaled_freq = original_freq / pitch_scale_factor
+                    else:
+                        scaled_freq = original_freq
+                    self.data.df.loc[idx, 'frequency'] = original_freq * (1 - slope_factor) + scaled_freq * slope_factor
             except (ValueError, ZeroDivisionError) as e:
                 print(f"Could not apply pitch scaling: {e}")
 
-        # Amplitude Scaling (Dynamic Scaling)
         amplitude_scale_factor_str = edits.get('amplitude_scale_factor', '').strip()
         amplitude_scale_fixed_partial_str = edits.get('amplitude_scale_fixed_partial', '').strip()
         if amplitude_scale_factor_str and amplitude_scale_fixed_partial_str:
@@ -191,196 +236,69 @@ class HarmonicEditor:
                 fixed_partial = int(amplitude_scale_fixed_partial_str)
 
                 for idx in selected_indices:
+                    slope_factor = slope_factors.get(idx, 1.0)
+                    if slope_factor == 0: continue
+                    original_amp = self.data.df.loc[idx, 'amplitude']
                     harmonic_index = self.data.df.loc[idx, 'harmonic_index']
                     distance = abs(harmonic_index - fixed_partial)
                     if distance > 0:
-                        self.data.df.loc[idx, 'amplitude'] *= (amplitude_scale_factor ** distance)
+                        scaled_amp = original_amp * (amplitude_scale_factor ** distance)
+                        self.data.df.loc[idx, 'amplitude'] = original_amp * (1 - slope_factor) + scaled_amp * slope_factor
             except (ValueError, ZeroDivisionError) as e:
                 print(f"Could not apply amplitude scaling: {e}")
-
+        
         # --- Step 4: Smoothing ---
         use_smoothstep = edits.get('smoothstep', False)
-
         def smoothstep(x):
             return x * x * (3 - 2 * x)
 
         smoothing_hz = edits.get('smoothing_hz', 0)
         if smoothing_hz > 0:
-            try:
-                smoothing_perc = float(smoothing_hz)
-                if 0 <= smoothing_perc <= 100:
-                    p = smoothing_perc / 100.0
-                    if use_smoothstep:
-                        p = smoothstep(p)
-                    
-                    selected_df = self.data.df.loc[selected_indices]
-                    for h_idx, group in selected_df.groupby('harmonic_index'):
-                        if len(group) > 1:
-                            avg_freq = group['frequency'].mean()
-                            
-                            self.data.df.loc[group.index, 'frequency'] = group['frequency'] * (1 - p) + avg_freq * p
-                else:
-                    print("Smoothing percentage must be between 0 and 100.")
-            except ValueError:
-                print(f"Could not parse '{smoothing_hz}' for Smoothing Hz. Skipping.")
+            p = smoothing_hz / 100.0
+            if use_smoothstep:
+                p = smoothstep(p)
+            for h_idx, group in self.data.df.loc[selected_indices].groupby('harmonic_index'):
+                if len(group) > 1:
+                    avg_freq = group['frequency'].mean()
+                    for idx, row in group.iterrows():
+                        slope_factor = slope_factors.get(idx, 1.0)
+                        effective_p = p * slope_factor
+                        original_freq = self.data.df.loc[idx, 'frequency']
+                        self.data.df.loc[idx, 'frequency'] = original_freq * (1 - effective_p) + avg_freq * effective_p
 
         smoothing_db = edits.get('smoothing_db', 0)
         if smoothing_db > 0:
-            try:
-                smoothing_perc = float(smoothing_db)
-                if 0 <= smoothing_perc <= 100:
-                    p = smoothing_perc / 100.0
-                    if use_smoothstep:
-                        p = smoothstep(p)
-                    
-                    selected_df = self.data.df.loc[selected_indices]
-                    for h_idx, group in selected_df.groupby('harmonic_index'):
-                        if len(group) > 1:
-                            avg_amp = group['amplitude'].mean()
-                            
-                            self.data.df.loc[group.index, 'amplitude'] = group['amplitude'] * (1 - p) + avg_amp * p
-                else:
-                    print("Smoothing percentage must be between 0 and 100.")
-            except ValueError:
-                print(f"Could not parse '{smoothing_db}' for Smoothing dB. Skipping.")
+            p = smoothing_db / 100.0
+            if use_smoothstep:
+                p = smoothstep(p)
+            for h_idx, group in self.data.df.loc[selected_indices].groupby('harmonic_index'):
+                if len(group) > 1:
+                    avg_amp = group['amplitude'].mean()
+                    for idx, row in group.iterrows():
+                        slope_factor = slope_factors.get(idx, 1.0)
+                        effective_p = p * slope_factor
+                        original_amp = self.data.df.loc[idx, 'amplitude']
+                        self.data.df.loc[idx, 'amplitude'] = original_amp * (1 - effective_p) + avg_amp * effective_p
 
-        # --- Step 5: Apply Sliding (Linear Interpolation) ---
+        # --- Step 5: Apply Sliding ---
         sliding_percentage = edits.get('sliding_percentage', 0)
         if sliding_percentage > 0:
             p = sliding_percentage / 100.0
-            
-            # Get only the selected data points
-            selected_df = self.data.df.loc[selected_indices].copy()
-
-            # Group by harmonic_index and process each harmonic separately
-            for h_idx, group in selected_df.groupby('harmonic_index'):
-                # Sort by time to ensure correct chain identification
+            for h_idx, group in self.data.df.loc[selected_indices].groupby('harmonic_index'):
                 group = group.sort_values(by='time')
-                
-                if len(group) < 2:
-                    continue # Need at least two points to form a chain
+                if len(group) >= 2:
+                    start_freq, end_freq = group['frequency'].iloc[0], group['frequency'].iloc[-1]
+                    start_time, end_time = group['time'].iloc[0], group['time'].iloc[-1]
+                    for idx, row in group.iterrows():
+                        slope_factor = slope_factors.get(idx, 1.0)
+                        effective_p = p * slope_factor
+                        original_freq = row['frequency']
+                        if end_time - start_time != 0:
+                            time_ratio = (row['time'] - start_time) / (end_time - start_time)
+                            interpolated_freq = start_freq + time_ratio * (end_freq - start_freq)
+                            self.data.df.loc[idx, 'frequency'] = original_freq * (1 - effective_p) + interpolated_freq * effective_p
 
-                # Calculate typical time step for this group
-                time_diffs = group['time'].diff().dropna()
-                if not time_diffs.empty:
-                    # Find the smallest non-zero time difference
-                    min_time_diff = time_diffs[time_diffs > 1e-9].min() # Use a small epsilon to avoid zero
-                    if pd.isna(min_time_diff):
-                        continue # All time diffs are zero or very small, cannot determine typical step
-                    gap_threshold = min_time_diff * 1.5 # A gap is 1.5 times larger than the smallest step
-                else:
-                    continue # Cannot determine time differences
-
-                # Identify chains of sequentially selected partials
-                chains = []
-                current_chain_indices = [group.index[0]]
-
-                for i in range(1, len(group)):
-                    time_diff = group.iloc[i]['time'] - group.iloc[i-1]['time']
-                    # If the time difference is significantly larger than the typical step, start a new chain
-                    if time_diff > gap_threshold:
-                        chains.append(current_chain_indices)
-                        current_chain_indices = [group.index[i]]
-                    else:
-                        current_chain_indices.append(group.index[i])
-                chains.append(current_chain_indices) # Add the last chain
-
-                for chain_indices in chains:
-                    if len(chain_indices) >= 2:
-                        chain_data = self.data.df.loc[chain_indices]
-                        start_time = chain_data.iloc[0]['time']
-                        end_time = chain_data.iloc[-1]['time']
-                        start_freq = chain_data.iloc[0]['frequency']
-                        end_freq = chain_data.iloc[-1]['frequency']
-
-                        # Apply linear interpolation for points within the chain
-                        for idx in chain_indices:
-                            current_point_time = self.data.df.loc[idx, 'time']
-                            original_freq = self.data.df.loc[idx, 'frequency']
-
-                            if end_time - start_time != 0:
-                                # Calculate interpolated frequency
-                                interpolated_freq = start_freq + (current_point_time - start_time) * \
-                                                    (end_freq - start_freq) / (end_time - start_time)
-                            else:
-                                # Handle case where start and end times are the same (e.g., only two points at same time)
-                                interpolated_freq = start_freq # Or end_freq, they are the same
-                            
-                            # Blend original and interpolated frequency based on sliding_percentage
-                            new_freq = original_freq * (1 - p) + interpolated_freq * p
-                            
-                            # Update the frequency in the main DataFrame
-                            self.data.df.loc[idx, 'frequency'] = new_freq
-
-        # --- Step 5.1: Apply Dynamic (Linear Interpolation for Amplitude) ---
-        dynamic_percentage = edits.get('dynamic_percentage', 0)
-        if dynamic_percentage > 0:
-            p = dynamic_percentage / 100.0
-            
-            # Get only the selected data points
-            selected_df = self.data.df.loc[selected_indices].copy()
-
-            # Group by harmonic_index and process each harmonic separately
-            for h_idx, group in selected_df.groupby('harmonic_index'):
-                # Sort by time to ensure correct chain identification
-                group = group.sort_values(by='time')
-                
-                if len(group) < 2:
-                    continue # Need at least two points to form a chain
-
-                # Calculate typical time step for this group
-                time_diffs = group['time'].diff().dropna()
-                if not time_diffs.empty:
-                    # Find the smallest non-zero time difference
-                    min_time_diff = time_diffs[time_diffs > 1e-9].min() # Use a small epsilon to avoid zero
-                    if pd.isna(min_time_diff):
-                        continue # All time diffs are zero or very small, cannot determine typical step
-                    gap_threshold = min_time_diff * 1.5 # A gap is 1.5 times larger than the smallest step
-                else:
-                    continue # Cannot determine time differences
-
-                # Identify chains of sequentially selected partials
-                chains = []
-                current_chain_indices = [group.index[0]]
-
-                for i in range(1, len(group)):
-                    time_diff = group.iloc[i]['time'] - group.iloc[i-1]['time']
-                    # If the time difference is significantly larger than the typical step, start a new chain
-                    if time_diff > gap_threshold:
-                        chains.append(current_chain_indices)
-                        current_chain_indices = [group.index[i]]
-                    else:
-                        current_chain_indices.append(group.index[i])
-                chains.append(current_chain_indices) # Add the last chain
-
-                for chain_indices in chains:
-                    if len(chain_indices) >= 2:
-                        chain_data = self.data.df.loc[chain_indices]
-                        start_time = chain_data.iloc[0]['time']
-                        end_time = chain_data.iloc[-1]['time']
-                        start_amp = chain_data.iloc[0]['amplitude']
-                        end_amp = chain_data.iloc[-1]['amplitude']
-
-                        # Apply linear interpolation for points within the chain
-                        for idx in chain_indices:
-                            current_point_time = self.data.df.loc[idx, 'time']
-                            original_amp = self.data.df.loc[idx, 'amplitude']
-
-                            if end_time - start_time != 0:
-                                # Calculate interpolated amplitude
-                                interpolated_amp = start_amp + (current_point_time - start_time) * \
-                                                    (end_amp - start_amp) / (end_time - start_time)
-                            else:
-                                # Handle case where start and end times are the same (e.g., only two points at same time)
-                                interpolated_amp = start_amp # Or end_amp, they are the same
-                            
-                            # Blend original and interpolated amplitude based on dynamic_percentage
-                            new_amp = original_amp * (1 - p) + interpolated_amp * p
-                            
-                            # Update the amplitude in the main DataFrame
-                            self.data.df.loc[idx, 'amplitude'] = new_amp
-
-        # --- Step 6: Apply Snapping (to the newly modified frequencies) ---
+        # --- Step 6: Apply Snapping ---
         try:
             f_ref = float(edits['ref_pitch'])
         except (ValueError, TypeError):
@@ -394,12 +312,14 @@ class HarmonicEditor:
             try:
                 edo = int(edo_str)
                 for idx in selected_indices:
-                    current_freq = self.data.df.loc[idx, 'frequency']
-                    if current_freq > 0:
-                        n = edo * np.log2(current_freq / f_ref)
+                    slope_factor = slope_factors.get(idx, 1.0)
+                    if slope_factor == 0: continue
+                    original_freq = self.data.df.loc[idx, 'frequency']
+                    if original_freq > 0:
+                        n = edo * np.log2(original_freq / f_ref)
                         n_nearest = round(n)
-                        new_freq = f_ref * (2 ** (n_nearest / edo))
-                        self.data.df.loc[idx, 'frequency'] = new_freq
+                        snapped_freq = f_ref * (2 ** (n_nearest / edo))
+                        self.data.df.loc[idx, 'frequency'] = original_freq * (1 - slope_factor) + snapped_freq * slope_factor
             except (ValueError, TypeError):
                 print(f"Invalid EDO value: {edo_str}")
 
@@ -409,22 +329,24 @@ class HarmonicEditor:
                 octave_repeat = edits['octave_repeat']
                 
                 for idx in selected_indices:
-                    current_freq = self.data.df.loc[idx, 'frequency']
-                    if current_freq <= 0: continue
+                    slope_factor = slope_factors.get(idx, 1.0)
+                    if slope_factor == 0: continue
+                    original_freq = self.data.df.loc[idx, 'frequency']
+                    if original_freq <= 0: continue
 
                     target_freqs = []
                     for ratio in ratios:
                         if ratio <= 0: continue
                         if octave_repeat:
-                            k = np.log2(current_freq / (f_ref * ratio)) if (f_ref * ratio) != 0 else 0
+                            k = np.log2(original_freq / (f_ref * ratio)) if (f_ref * ratio) > 0 else 0
                             k_nearest = round(k)
                             target_freqs.append(f_ref * ratio * (2 ** k_nearest))
                         else:
                             target_freqs.append(f_ref * ratio)
                     
                     if target_freqs:
-                        closest_freq = min(target_freqs, key=lambda f: abs(f - current_freq))
-                        self.data.df.loc[idx, 'frequency'] = closest_freq
+                        snapped_freq = min(target_freqs, key=lambda f: abs(f - original_freq))
+                        self.data.df.loc[idx, 'frequency'] = original_freq * (1 - slope_factor) + snapped_freq * slope_factor
             except Exception as e:
                 print(f"Error parsing ratios: {e}")
 
@@ -434,31 +356,30 @@ class HarmonicEditor:
                 octave_repeat = edits['octave_repeat']
 
                 for idx in selected_indices:
-                    current_freq = self.data.df.loc[idx, 'frequency']
-                    if current_freq <= 0: continue
+                    slope_factor = slope_factors.get(idx, 1.0)
+                    if slope_factor == 0: continue
+                    original_freq = self.data.df.loc[idx, 'frequency']
+                    if original_freq <= 0: continue
 
                     harmonic_index = self.data.df.loc[idx, 'harmonic_index']
-                    
                     scaled_target_ratios = [r * harmonic_index for r in base_scale_ratios]
                     
                     target_freqs = []
                     for ratio in scaled_target_ratios:
                         if ratio <= 0: continue
                         if octave_repeat:
-                            k = np.log2(current_freq / (f_ref * ratio)) if (f_ref * ratio) != 0 else 0
+                            k = np.log2(original_freq / (f_ref * ratio)) if (f_ref * ratio) > 0 else 0
                             k_nearest = round(k)
                             target_freqs.append(f_ref * ratio * (2 ** k_nearest))
                         else:
                             target_freqs.append(f_ref * ratio)
                     
                     if target_freqs:
-                        closest_freq = min(target_freqs, key=lambda f: abs(f - current_freq))
-                        self.data.df.loc[idx, 'frequency'] = closest_freq
+                        snapped_freq = min(target_freqs, key=lambda f: abs(f - original_freq))
+                        self.data.df.loc[idx, 'frequency'] = original_freq * (1 - slope_factor) + snapped_freq * slope_factor
             except Exception as e:
                 print(f"Error parsing scale or applying snap to scale: {e}")
 
-        # --- Step 6: Mark data as modified ---
+        # --- Finalize ---
         self.data._modified = True
-
-        # --- Step 7: Finalize ---
         self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
