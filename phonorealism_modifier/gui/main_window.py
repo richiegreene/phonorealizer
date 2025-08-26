@@ -92,30 +92,42 @@ class MainWindow(QMainWindow):
         # Undo/Redo actions
         undo_action = self.undo_stack.createUndoAction(self, "&Undo")
         undo_action.setShortcuts(QKeySequence.StandardKey.Undo)
+        undo_action.setStatusTip("Undo the last action.")
         redo_action = self.undo_stack.createRedoAction(self, "&Redo")
         redo_action.setShortcuts(QKeySequence.StandardKey.Redo)
+        redo_action.setStatusTip("Redo the last undone action.")
         self.addAction(undo_action)
         self.addAction(redo_action)
 
         # File actions
         open_action = QAction("Open", self)
+        open_action.setStatusTip("Open a harmonic data file (.csv, .wav, .mp3, .aif).")
         open_action.triggered.connect(self.open_csv)
         self.toolbar.addAction(open_action)
 
-        insert_action = QAction("Insert", self) # New action
-        insert_action.triggered.connect(self.insert_csv) # Connect to new method
-        self.toolbar.addAction(insert_action) # Add to toolbar
+        insert_action = QAction("Insert", self)
+        insert_action.setStatusTip("Insert a harmonic data file at the current playback position.")
+        insert_action.triggered.connect(self.insert_csv)
+        self.toolbar.addAction(insert_action)
 
         save_action = QAction("Save", self)
+        save_action.setStatusTip("Save the current harmonic data.")
         save_action.triggered.connect(self.save_action)
         self.toolbar.addAction(save_action)
 
         self.play_action = QAction("Play", self)
+        self.play_action.setStatusTip("Play or pause the audio.")
         self.play_action.triggered.connect(lambda: self.audio_player.toggle_playback(self.data, self.play_action))
         self.toolbar.addAction(self.play_action)
 
         # Tool buttons
         self.tool_actions = {}
+        tool_tips = {
+            'view': 'Pan and zoom the view.',
+            'box': 'Select points by dragging a rectangle.',
+            'lasso': 'Select points by drawing a freeform shape.',
+            'select_partial': 'Select an entire partial with a single click.'
+        }
         for tool in ['view', 'box', 'lasso', 'select_partial']:
             if tool == 'select_partial':
                 display_name = 'Partial'
@@ -123,26 +135,30 @@ class MainWindow(QMainWindow):
                 display_name = tool.capitalize()
             act = QAction(display_name, self)
             act.setCheckable(True)
+            act.setStatusTip(tool_tips.get(tool, ''))
             act.triggered.connect(partial(self.set_tool, tool))
             self.toolbar.addAction(act)
             self.tool_actions[tool] = act
 
         define_action = QAction("Define", self)
+        define_action.setStatusTip("Define a selection using specific criteria.")
         define_action.triggered.connect(self.open_define_selection_dialog)
         self.toolbar.addAction(define_action)
 
         batch_edit_action = QAction("Selected", self)
+        batch_edit_action.setStatusTip("Open the batch editing dialog for selected points.")
         batch_edit_action.triggered.connect(self.batch_edit)
         self.toolbar.addAction(batch_edit_action)
 
-        # New: Y-axis Display Mode Toggle
         self.y_axis_mode_action = QAction("Log", self)
         self.y_axis_mode_action.setCheckable(True)
-        self.y_axis_mode_action.setChecked(False) # Default to linear (Hz)
+        self.y_axis_mode_action.setChecked(False)
+        self.y_axis_mode_action.setStatusTip("Toggle the frequency axis between logarithmic (Cents) and linear (Hz) scales.")
         self.y_axis_mode_action.triggered.connect(self.toggle_y_axis_mode)
         self.toolbar.addAction(self.y_axis_mode_action)
 
         perform_action = QAction("Perform", self)
+        perform_action.setStatusTip("Open the real-time performance window.")
         perform_action.triggered.connect(self.open_perform_window)
         self.toolbar.addAction(perform_action)
 
