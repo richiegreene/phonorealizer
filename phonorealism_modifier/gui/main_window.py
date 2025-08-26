@@ -118,7 +118,7 @@ class MainWindow(QMainWindow):
         self.tool_actions = {}
         for tool in ['view', 'box', 'lasso', 'select_partial']:
             if tool == 'select_partial':
-                display_name = 'Select Partial'
+                display_name = 'Partial'
             else:
                 display_name = tool.capitalize()
             act = QAction(display_name, self)
@@ -131,7 +131,7 @@ class MainWindow(QMainWindow):
         define_action.triggered.connect(self.open_define_selection_dialog)
         self.toolbar.addAction(define_action)
 
-        batch_edit_action = QAction("Edit Selected", self)
+        batch_edit_action = QAction("Selected", self)
         batch_edit_action.triggered.connect(self.batch_edit)
         self.toolbar.addAction(batch_edit_action)
 
