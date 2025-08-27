@@ -252,11 +252,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function drawLive(ctx, currentTime) {
         const lookbehind = 5; // seconds
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-        ctx.fillStyle = '#f0f0f0';
+        ctx.fillStyle = '#333333'; // Dark grey background
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
         // Draw dividing line
-        ctx.strokeStyle = '#000000';
+        ctx.strokeStyle = '#FFFFFF'; // White dividing line
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(0, ctx.canvas.height * PITCH_SECTION_HEIGHT_RATIO);
@@ -269,11 +269,11 @@ document.addEventListener('DOMContentLoaded', () => {
         }));
 
         // Draw pitch graph
-        drawGraph(ctx, timedData, 'x', d => pitchToY(d.pitch, ctx.canvas), 'red', 2);
+        drawGraph(ctx, timedData, 'x', d => pitchToY(d.pitch, ctx.canvas), '#FFFFFF', 2); // White pitch line
 
         // Draw amplitude graphs (mirrored)
-        drawGraph(ctx, timedData, 'x', d => amplitudeToY(d.amplitude, ctx.canvas, true), 'orange', 1); // Top mirrored line
-        drawGraph(ctx, timedData, 'x', d => amplitudeToY(d.amplitude, ctx.canvas, false), 'orange', 1); // Bottom mirrored line
+        drawGraph(ctx, timedData, 'x', d => amplitudeToY(d.amplitude, ctx.canvas, true), '#FFFFFF', 1); // White amplitude line
+        drawGraph(ctx, timedData, 'x', d => amplitudeToY(d.amplitude, ctx.canvas, false), '#FFFFFF', 1); // White amplitude line
 
         drawTimeMarker(ctx, ctx.canvas.width);
     }
@@ -281,11 +281,11 @@ document.addEventListener('DOMContentLoaded', () => {
     function drawScore(ctx, partialIndex, currentTime) {
         const lookahead = 5; // seconds
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-        ctx.fillStyle = '#f0f0f0';
+        ctx.fillStyle = '#333333'; // Dark grey background
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
         // Draw dividing line
-        ctx.strokeStyle = '#000000';
+        ctx.strokeStyle = '#FFFFFF'; // White dividing line
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(0, ctx.canvas.height * PITCH_SECTION_HEIGHT_RATIO);
@@ -299,17 +299,17 @@ document.addEventListener('DOMContentLoaded', () => {
         );
 
         // Draw pitch line
-        drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => pitchToY(d.frequency, ctx.canvas), 'blue', 2);
+        drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => pitchToY(d.frequency, ctx.canvas), '#FFFFFF', 2); // White pitch line
 
         // Draw amplitude graphs (mirrored)
-        drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => amplitudeToY(dbToLinear(d.amplitude) / scoreAmpMaxLinear, ctx.canvas, true), '#ADD8E6', 1); // Top mirrored line
-        drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => amplitudeToY(dbToLinear(d.amplitude) / scoreAmpMaxLinear, ctx.canvas, false), '#ADD8E6', 1); // Bottom mirrored line
+        drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => amplitudeToY(dbToLinear(d.amplitude) / scoreAmpMaxLinear, ctx.canvas, true), '#FFFFFF', 1); // White amplitude line
+        drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => amplitudeToY(dbToLinear(d.amplitude) / scoreAmpMaxLinear, ctx.canvas, false), '#FFFFFF', 1); // White amplitude line
 
         drawTimeMarker(ctx, 0);
     }
 
     function drawTimeMarker(ctx, xPos) {
-        ctx.strokeStyle = '#000000';
+        ctx.strokeStyle = '#FFFFFF'; // White time marker
         ctx.lineWidth = 1;
         ctx.beginPath();
         ctx.moveTo(xPos, 0);
