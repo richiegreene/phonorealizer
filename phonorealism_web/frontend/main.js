@@ -3,6 +3,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const csvFileInput = document.getElementById('csvFile');
     const partialSelector = document.getElementById('partialSelector');
     const toggleButton = document.getElementById('toggle');
+    const rateSlider = document.getElementById('rateSlider');
+    const rateValue = document.getElementById('rateValue');
     const logArea = document.getElementById('log');
     const liveCanvas = document.getElementById('live-visualizer');
     const scoreCanvas = document.getElementById('score-visualizer');
@@ -24,6 +26,10 @@ document.addEventListener('DOMContentLoaded', () => {
     logMessage("Script loaded and initialized.");
 
     // --- 1. File & UI Logic ---
+    rateSlider.addEventListener('input', () => {
+        rateValue.textContent = `${rateSlider.value}ms`;
+    });
+
     csvFileInput.addEventListener('change', (event) => {
         const file = event.target.files[0];
         if (!file) return;
@@ -105,24 +111,27 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleButton.textContent = 'Stop';
         liveHistory = [];
         logMessage("Visualization started. Beginning animation loop...");
-        pitchModel.getPitch(gotPitch); // Start listening for pitch events
+        getPitch();
         draw();
     }
 
-    function gotPitch(error, frequency, confidence) {
-        if (error) {
-            logMessage(`Error getting pitch: ${error}`);
-        } else {
-            if (frequency && confidence > 0.6) {
-                logMessage(`Pitch: ${frequency.toFixed(2)} Hz, Confidence: ${confidence.toFixed(2)}`);
-                currentPitch = frequency;
+    function getPitch() {
+        if (!isRunning) return;
+        pitchModel.getPitch((error, frequency, confidence) => {
+            if (error) {
+                logMessage(`Error getting pitch: ${error}`);
+                currentPitch = null;
+                return;
+            }
+            if (frequency) {
+                currentPitch = frequency * 2;
             } else {
                 currentPitch = null;
             }
-        }
-        if (isRunning) {
-            pitchModel.getPitch(gotPitch);
-        }
+            if (isRunning) {
+                setTimeout(getPitch, parseInt(rateSlider.value, 10));
+            }
+        });
     }
 
     function stopVisualization() {
@@ -142,7 +151,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const currentTime = audioContext.currentTime - startTime;
         
         liveHistory.push({ pitch: currentPitch, time: currentTime });
-        if (liveHistory.length > 300) { // Keep history to a reasonable size
+        if (liveHistory.length > 300) {
             liveHistory.shift();
         }
 
@@ -215,7 +224,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (y1 === null || y2 === null) continue;
 
-            // Draw pitch line segment
             ctx.strokeStyle = '#0000FF';
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -223,7 +231,6 @@ document.addEventListener('DOMContentLoaded', () => {
             ctx.lineTo(x2, y2);
             ctx.stroke();
 
-            // Draw amplitude lines for both points
             const amp1 = (d1.amplitude - ampMin) / (ampMax - ampMin) * maxAmpHeight;
             const amp2 = (d2.amplitude - ampMin) / (ampMax - ampMin) * maxAmpHeight;
             ctx.strokeStyle = '#ADD8E6';
