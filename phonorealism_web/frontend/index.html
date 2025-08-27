@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phonorealism Web</title>
+    <style>
+        body { font-family: sans-serif; padding: 1em; }
+        canvas { border: 1px solid black; }
+    </style>
+</head>
+<body>
+    <h1>Phonorealism Musician View</h1>
+    <div>
+        <label for="csvFile">Load Score CSV:</label>
+        <input type="file" id="csvFile" accept=".csv">
+    </div>
+    <div>
+        <label for="partialSelector">Select Your Part (Harmonic):</label>
+        <select id="partialSelector" disabled></select>
+    </div>
+    <button id="toggle" disabled>Start</button>
+    <br><br>
+    <div id="canvas-container" style="display: flex; gap: 10px;">
+        <canvas id="live-visualizer" width="400" height="400"></canvas>
+        <canvas id="score-visualizer" width="800" height="400"></canvas>
+    </div>
+    <h3>Log</h3>
+    <pre id="log" style="height: 150px; overflow-y: scroll; border: 1px solid #ccc; padding: 5px; background: #f9f9f9;"></pre>
+
+    <script src="https://unpkg.com/ml5@0.12.2/dist/ml5.min.js"></script>
+    <script src="main.js"></script>
+</body>
+</html>
