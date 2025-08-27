@@ -47,8 +47,8 @@ async def websocket_endpoint(websocket: WebSocket):
                 if msg_type == 'load_score':
                     print(f"Conductor loaded score, broadcasting to {len(manager.musician_connections)} musicians.")
                     await manager.broadcast_to_musicians(data)
-                elif msg_type == 'start_performance':
-                    print(f"Conductor started performance, broadcasting to {len(manager.musician_connections)} musicians.")
+                elif msg_type == 'start_performance' or msg_type == 'stop_performance':
+                    print(f"Conductor sent {msg_type}, broadcasting to {len(manager.musician_connections)} musicians.")
                     await manager.broadcast_to_musicians(data)
             else:
                 # Regular musician client, ignore messages for now

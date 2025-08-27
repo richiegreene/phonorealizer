@@ -43,10 +43,13 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.readAsText(file);
     });
 
+    let isStarted = false;
+
     startButton.addEventListener('click', () => {
-        logMessage("Sending START signal to all musicians...");
-        socket.send(JSON.stringify({
-            type: 'start_performance'
-        }));
+        const type = isStarted ? 'stop_performance' : 'start_performance';
+        logMessage(`Sending ${type.toUpperCase()} signal to all musicians...`);
+        socket.send(JSON.stringify({ type }));
+        isStarted = !isStarted;
+        startButton.textContent = isStarted ? 'Stop Performance' : 'Start Performance';
     });
 });
