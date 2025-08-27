@@ -1,7 +1,9 @@
 document.addEventListener('DOMContentLoaded', () => {
     const csvContentTextarea = document.getElementById('csvContent');
     const loadCsvButton = document.getElementById('loadCsvFromText');
-    const startButton = document.getElementById('startPerformance');
+    const playButton = document.getElementById('playButton');
+    const pauseButton = document.getElementById('pauseButton');
+    const stopButton = document.getElementById('stopButton');
     const logArea = document.getElementById('log');
 
     const WS_URL = "ws://localhost:8000/ws";
@@ -38,17 +40,33 @@ document.addEventListener('DOMContentLoaded', () => {
             type: 'load_score',
             payload: content
         }));
-        startButton.disabled = false;
-        logMessage("Start button enabled.");
+        playButton.disabled = false;
+        pauseButton.disabled = true;
+        stopButton.disabled = true;
+        logMessage("Play button enabled.");
     });
 
-    startButton.addEventListener('click', () => {
-        const type = isStarted ? 'stop_performance' : 'start_performance';
-        logMessage(`Sending ${type.toUpperCase()} signal to all musicians...`);
-        socket.send(JSON.stringify({ type }));
-        isStarted = !isStarted;
-        startButton.textContent = isStarted ? 'Stop Performance' : 'Start Performance';
+    playButton.addEventListener('click', () => {
+        logMessage(`Sending START_PERFORMANCE signal to all musicians...`);
+        socket.send(JSON.stringify({ type: 'start_performance' }));
+        playButton.disabled = true;
+        pauseButton.disabled = false;
+        stopButton.disabled = false;
     });
 
-    let isStarted = false;
+    pauseButton.addEventListener('click', () => {
+        logMessage(`Sending PAUSE_PERFORMANCE signal to all musicians...`);
+        socket.send(JSON.stringify({ type: 'pause_performance' }));
+        playButton.disabled = false;
+        pauseButton.disabled = true;
+        stopButton.disabled = false;
+    });
+
+    stopButton.addEventListener('click', () => {
+        logMessage(`Sending STOP_PERFORMANCE signal to all musicians...`);
+        socket.send(JSON.stringify({ type: 'stop_performance' }));
+        playButton.disabled = false;
+        pauseButton.disabled = true;
+        stopButton.disabled = true;
+    });
 });
