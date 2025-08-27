@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- State Variables ---
     let scoreData = [], liveHistory = [];
-    let audioContext, pitchModel;
+    let audioContext, pitchModel, analyserNode; // analyserNode is now separate
     let isRunning = false, isMicEnabled = false, isScoreLoaded = false;
     let startTime = 0, animationFrameId;
     let currentPitch = null;
@@ -121,8 +121,13 @@ document.addEventListener('DOMContentLoaded', () => {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             logMessage("Microphone access granted.");
-            const model_url = 'https://cdn.jsdelivr.net/gh/ml5js/ml5-data-and-models/models/pitch-detection/crepe/';
-            pitchModel = ml5.pitchDetection(model_url, audioContext, stream, () => {
+
+            // Create a separate analyser for amplitude
+            analyserNode = audioContext.createAnalyser();
+            const sourceNode = audioContext.createMediaStreamSource(stream);
+            sourceNode.connect(analyserNode);
+            // Connect stream to pitch model as well
+            pitchModel = ml5.pitchDetection('https://cdn.jsdelivr.net/gh/ml5js/ml5-data-and-models/models/pitch-detection/crepe/', audioContext, stream, () => {
                 logMessage("Pitch detection model loaded.");
                 micButton.textContent = "Mic Enabled";
                 micButton.disabled = true;
@@ -158,14 +163,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function getLiveAmplitude() {
-        if (!pitchModel || !pitchModel.analyser) return 0;
-        const buffer = new Float32Array(pitchModel.analyser.fftSize);
-        pitchModel.analyser.getFloatTimeDomainData(buffer);
+        if (!analyserNode) return 0; // Use the separate analyserNode
+        const buffer = new Float32Array(analyserNode.fftSize);
+        analyserNode.getFloatTimeDomainData(buffer);
         let sumOfSquares = 0;
         for (let i = 0; i < buffer.length; i++) { sumOfSquares += buffer[i] * buffer[i]; }
         const rms = Math.sqrt(sumOfSquares / buffer.length);
         const gain = parseFloat(gainSlider.value);
-        return Math.min(1, rms * 50 * gain); // Apply a large base multiplier and the gain slider value
+        return Math.min(1, rms * 1 * gain); // Increased base multiplier
     }
 
     function stopVisualization() {
@@ -261,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const timedData = liveHistory.map(d => ({
             ...d,
             x: ((d.time - currentTime) / lookbehind) * ctx.canvas.width + ctx.canvas.width
-        })).filter(d => d.x >= 0 && d.x <= ctx.canvas.width); // Filter to visible range
+        }));
 
         // Draw pitch graph
         drawGraph(ctx, timedData, 'x', d => pitchToY(d.pitch, ctx.canvas), 'red', 2);
@@ -293,17 +298,12 @@ document.addEventListener('DOMContentLoaded', () => {
             d.time < currentTime + lookahead
         );
 
-        const timedData = visibleData.map(d => ({
-            ...d,
-            x: ((d.time - currentTime) / lookahead) * ctx.canvas.width
-        }));
-
-        // Draw pitch graph
-        drawGraph(ctx, timedData, 'x', d => pitchToY(d.frequency, ctx.canvas), 'blue', 2);
+        // Draw pitch line
+        drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => pitchToY(d.frequency, ctx.canvas), 'blue', 2);
 
         // Draw amplitude graphs (mirrored)
-        drawGraph(ctx, timedData, 'x', d => amplitudeToY(dbToLinear(d.amplitude) / scoreAmpMaxLinear, ctx.canvas, true), '#ADD8E6', 1); // Top mirrored line
-        drawGraph(ctx, timedData, 'x', d => amplitudeToY(dbToLinear(d.amplitude) / scoreAmpMaxLinear, ctx.canvas, false), '#ADD8E6', 1); // Bottom mirrored line
+        drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => amplitudeToY(dbToLinear(d.amplitude) / scoreAmpMaxLinear, ctx.canvas, true), '#ADD8E6', 1); // Top mirrored line
+        drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => amplitudeToY(dbToLinear(d.amplitude) / scoreAmpMaxLinear, ctx.canvas, false), '#ADD8E6', 1); // Bottom mirrored line
 
         drawTimeMarker(ctx, 0);
     }

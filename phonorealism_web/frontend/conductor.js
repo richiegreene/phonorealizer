@@ -1,5 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
-    const csvFileInput = document.getElementById('csvFile');
+    const csvContentTextarea = document.getElementById('csvContent');
+    const loadCsvButton = document.getElementById('loadCsvFromText');
     const startButton = document.getElementById('startPerformance');
     const logArea = document.getElementById('log');
 
@@ -8,13 +9,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function logMessage(message) {
         const time = new Date().toLocaleTimeString();
-        logArea.textContent = `[${time}] ${message}
-` + logArea.textContent;
+        logArea.textContent = `[${time}] ${message}\n` + logArea.textContent;
     }
+
+    logMessage("Script loaded and initialized.");
 
     socket.onopen = () => {
         logMessage("Connected to server as Conductor.");
-        // Identify this client as the conductor
         socket.send(JSON.stringify({ type: 'conductor_join' }));
     };
 
@@ -26,24 +27,20 @@ document.addEventListener('DOMContentLoaded', () => {
         logMessage(`!!! WebSocket Error: ${error.message} !!!`);
     };
 
-    csvFileInput.addEventListener('change', (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            const content = e.target.result;
-            logMessage(`Score loaded: ${file.name}. Broadcasting to musicians...`);
-            socket.send(JSON.stringify({
-                type: 'load_score',
-                payload: content
-            }));
-            startButton.disabled = false;
-        };
-        reader.readAsText(file);
+    loadCsvButton.addEventListener('click', () => {
+        const content = csvContentTextarea.value;
+        if (!content) {
+            logMessage("Textarea is empty. Please paste CSV content.");
+            return;
+        }
+        logMessage("CSV content loaded from textarea. Broadcasting to musicians...");
+        socket.send(JSON.stringify({
+            type: 'load_score',
+            payload: content
+        }));
+        startButton.disabled = false;
+        logMessage("Start button enabled.");
     });
-
-    let isStarted = false;
 
     startButton.addEventListener('click', () => {
         const type = isStarted ? 'stop_performance' : 'start_performance';
@@ -52,4 +49,6 @@ document.addEventListener('DOMContentLoaded', () => {
         isStarted = !isStarted;
         startButton.textContent = isStarted ? 'Stop Performance' : 'Start Performance';
     });
+
+    let isStarted = false;
 });

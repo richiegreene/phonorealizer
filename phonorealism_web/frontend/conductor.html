@@ -11,9 +11,10 @@
 <body>
     <h1>Phonorealism Conductor</h1>
     <div>
-        <label for="csvFile">Load Score CSV:</label>
-        <input type="file" id="csvFile" accept=".csv">
+        <label for="csvContent">Paste Score CSV Content Here:</label>
+        <textarea id="csvContent" rows="10" cols="80"></textarea>
     </div>
+    <button id="loadCsvFromText">Load CSV from Text</button>
     <br>
     <button id="startPerformance" disabled>Start Performance</button>
     <h3>Log</h3>
