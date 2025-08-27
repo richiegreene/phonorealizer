@@ -11,24 +11,16 @@
 </head>
 <body>
     <h1>Phonorealism Musician View</h1>
-    <div>
-        <label for="csvFile">Load Score CSV:</label>
-        <input type="file" id="csvFile" accept=".csv">
-    </div>
+    <div id="status">Connecting to server...</div>
     <div>
         <label for="partialSelector">Select Your Part (Harmonic):</label>
         <select id="partialSelector" disabled></select>
     </div>
-    <div>
-        <label for="rateSlider">Update Rate (ms):</label>
-        <input type="range" id="rateSlider" min="1" max="200" value="100">
-        <span id="rateValue">100ms</span>
-    </div>
-    <button id="toggle" disabled>Start</button>
+    <button id="toggle" disabled>Waiting for Conductor...</button>
     <br><br>
     <div id="canvas-container" style="display: flex; gap: 10px;">
-        <canvas id="live-visualizer" width="400" height="400"></canvas>
-        <canvas id="score-visualizer" width="800" height="400"></canvas>
+        <canvas id="live-visualizer" width="400" height="300"></canvas>
+        <canvas id="score-visualizer" width="800" height="300"></canvas>
     </div>
     <h3>Log</h3>
     <pre id="log" style="height: 150px; overflow-y: scroll; border: 1px solid #ccc; padding: 5px; background: #f9f9f9;"></pre>

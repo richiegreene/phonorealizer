@@ -1,10 +1,8 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- Element Setup ---
-    const csvFileInput = document.getElementById('csvFile');
+    const statusDiv = document.getElementById('status');
     const partialSelector = document.getElementById('partialSelector');
     const toggleButton = document.getElementById('toggle');
-    const rateSlider = document.getElementById('rateSlider');
-    const rateValue = document.getElementById('rateValue');
     const logArea = document.getElementById('log');
     const liveCanvas = document.getElementById('live-visualizer');
     const scoreCanvas = document.getElementById('score-visualizer');
@@ -25,28 +23,42 @@ document.addEventListener('DOMContentLoaded', () => {
 
     logMessage("Script loaded and initialized.");
 
-    // --- 1. File & UI Logic ---
-    rateSlider.addEventListener('input', () => {
-        rateValue.textContent = `${rateSlider.value}ms`;
-    });
+    // --- 1. WebSocket Communication ---
+    const WS_URL = "ws://localhost:8000/ws";
+    const socket = new WebSocket(WS_URL);
 
-    csvFileInput.addEventListener('change', (event) => {
-        const file = event.target.files[0];
-        if (!file) return;
-        logMessage(`File selected: ${file.name}`);
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            scoreData = parseCSV(e.target.result);
-            logMessage(`CSV parsed. Found ${scoreData.length} valid records.`);
+    socket.onopen = () => {
+        logMessage("Connected to server.");
+        statusDiv.textContent = "Connected. Waiting for conductor to load score.";
+    };
+
+    socket.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        logMessage(`Message received from server: ${message.type}`);
+
+        if (message.type === 'load_score') {
+            scoreData = parseCSV(message.payload);
+            logMessage(`Score received. Parsed ${scoreData.length} valid records.`);
             populatePartials(scoreData);
             updateAxes(scoreData, parseInt(partialSelector.value, 10));
             partialSelector.disabled = false;
-            toggleButton.disabled = false;
-            logMessage("UI enabled.");
-        };
-        reader.readAsText(file);
-    });
+            statusDiv.textContent = "Score loaded. Ready for conductor to start.";
+            toggleButton.textContent = "Ready";
+        } else if (message.type === 'start_performance') {
+            if (!isRunning) {
+                toggleButton.disabled = false;
+                toggleButton.click(); // Programmatically click the button to start
+            }
+        }
+    };
 
+    socket.onclose = () => {
+        logMessage("Disconnected from server.");
+        statusDiv.textContent = "Disconnected from server.";
+        toggleButton.disabled = true;
+    };
+
+    // --- 2. UI & Data Logic ---
     partialSelector.addEventListener('change', () => {
         updateAxes(scoreData, parseInt(partialSelector.value, 10));
     });
@@ -85,7 +97,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- 2. Audio and Animation Control ---
+    // --- 3. Audio and Animation Control ---
     toggleButton.addEventListener('click', () => {
         isRunning ? stopVisualization() : startVisualization();
     });
@@ -111,51 +123,45 @@ document.addEventListener('DOMContentLoaded', () => {
         toggleButton.textContent = 'Stop';
         liveHistory = [];
         logMessage("Visualization started. Beginning animation loop...");
-        getPitch();
+        pitchModel.getPitch(gotPitch);
         draw();
     }
 
-    function getPitch() {
-        if (!isRunning) return;
-        pitchModel.getPitch((error, frequency, confidence) => {
-            if (error) {
-                logMessage(`Error getting pitch: ${error}`);
-                currentPitch = null;
-                return;
-            }
-            if (frequency) {
-                currentPitch = frequency * 2;
-            } else {
-                currentPitch = null;
-            }
-            if (isRunning) {
-                setTimeout(getPitch, parseInt(rateSlider.value, 10));
-            }
-        });
+    function gotPitch(error, frequency) {
+        if (error) { logMessage(`Error getting pitch: ${error}`); currentPitch = null; return; }
+        if (frequency) { currentPitch = frequency * 2; } else { currentPitch = null; }
+        if (isRunning) { pitchModel.getPitch(gotPitch); }
+    }
+
+    function getLiveAmplitude() {
+        // ml5 provides its own analyser, let's use it
+        const buffer = new Float32Array(pitchModel.analyser.fftSize);
+        pitchModel.analyser.getFloatTimeDomainData(buffer);
+        let sumOfSquares = 0;
+        for (let i = 0; i < buffer.length; i++) { sumOfSquares += buffer[i] * buffer[i]; }
+        const rms = Math.sqrt(sumOfSquares / buffer.length);
+        return Math.min(1, rms * 5);
     }
 
     function stopVisualization() {
         if (audioContext && audioContext.state !== 'closed') { audioContext.close(); }
         if (animationFrameId) { cancelAnimationFrame(animationFrameId); }
         isRunning = false;
-        toggleButton.textContent = 'Start';
+        toggleButton.textContent = 'Ready';
         liveCtx.clearRect(0, 0, liveCanvas.width, liveCanvas.height);
         scoreCtx.clearRect(0, 0, scoreCanvas.width, scoreCanvas.height);
         logMessage("Visualization stopped and canvas cleared.");
     }
 
-    // --- 3. Visualization ---
+    // --- 4. Visualization ---
     function draw() {
         if (!isRunning) return;
-
         const currentTime = audioContext.currentTime - startTime;
-        
-        liveHistory.push({ pitch: currentPitch, time: currentTime });
-        if (liveHistory.length > 300) {
-            liveHistory.shift();
-        }
+        const liveAmplitude = getLiveAmplitude();
+        liveHistory.push({ pitch: currentPitch, amplitude: liveAmplitude, time: currentTime });
+        if (liveHistory.length > 300) { liveHistory.shift(); }
 
-        drawLiveHistory(liveCtx, currentTime);
+        drawLive(liveCtx, currentTime);
         drawScore(scoreCtx, parseInt(partialSelector.value, 10), currentTime);
 
         animationFrameId = requestAnimationFrame(draw);
@@ -166,44 +172,64 @@ document.addEventListener('DOMContentLoaded', () => {
         const logPitch = Math.log(pitch);
         const logMin = Math.log(pitchMin);
         const logMax = Math.log(pitchMax);
-        if (logMax === logMin) return canvas.height / 2;
+        if (logMax === logMin) return canvas.height / 4;
         const scale = (logPitch - logMin) / (logMax - logMin);
-        return canvas.height - (scale * canvas.height);
+        return (canvas.height / 2) - (scale * canvas.height / 2);
     }
 
-    function drawLiveHistory(ctx, currentTime) {
-        const lookbehind = 5; // seconds
+    function amplitudeToY(amplitude, canvas) {
+        const ampHeight = Math.max(0, Math.min(1, amplitude)) * (canvas.height / 2);
+        return (canvas.height / 2) + ampHeight;
+    }
+
+    function drawLive(ctx, currentTime) {
+        const lookbehind = 5;
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         ctx.fillStyle = '#f0f0f0';
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.strokeStyle = '#000000';
+        ctx.strokeRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
+        // Pitch
         ctx.strokeStyle = '#FF0000';
         ctx.lineWidth = 2;
         ctx.beginPath();
-
         let lastY = null;
         for (const d of liveHistory) {
             const x = ((d.time - currentTime) / lookbehind) * ctx.canvas.width + ctx.canvas.width;
             const y = pitchToY(d.pitch, ctx.canvas);
-
             if (y !== null) {
-                if (lastY === null) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
+                if (lastY === null) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
             }
             lastY = y;
         }
         ctx.stroke();
+
+        // Amplitude
+        ctx.strokeStyle = '#FFA500';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        lastY = null;
+        for (const d of liveHistory) {
+            const x = ((d.time - currentTime) / lookbehind) * ctx.canvas.width + ctx.canvas.width;
+            const y = amplitudeToY(d.amplitude, ctx.canvas);
+            if (y !== null) {
+                if (lastY === null) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
+            }
+            lastY = y;
+        }
+        ctx.stroke();
+
         drawTimeMarker(ctx, ctx.canvas.width);
     }
 
     function drawScore(ctx, partialIndex, currentTime) {
-        const lookahead = 5; // seconds
+        const lookahead = 5;
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         ctx.fillStyle = '#f0f0f0';
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.strokeStyle = '#000000';
+        ctx.strokeRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
         const visibleData = scoreData.filter(d => 
             d.harmonic_index === partialIndex &&
@@ -211,37 +237,34 @@ document.addEventListener('DOMContentLoaded', () => {
             d.time < currentTime + lookahead
         );
 
-        const maxAmpHeight = 50;
-
+        // Pitch
+        ctx.strokeStyle = '#0000FF';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
         for (let i = 1; i < visibleData.length; i++) {
-            const d1 = visibleData[i-1];
-            const d2 = visibleData[i];
-
+            const d1 = visibleData[i-1], d2 = visibleData[i];
             const x1 = ((d1.time - currentTime) / lookahead) * ctx.canvas.width;
             const y1 = pitchToY(d1.frequency, ctx.canvas);
             const x2 = ((d2.time - currentTime) / lookahead) * ctx.canvas.width;
             const y2 = pitchToY(d2.frequency, ctx.canvas);
-
-            if (y1 === null || y2 === null) continue;
-
-            ctx.strokeStyle = '#0000FF';
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
-            ctx.stroke();
-
-            const amp1 = (d1.amplitude - ampMin) / (ampMax - ampMin) * maxAmpHeight;
-            const amp2 = (d2.amplitude - ampMin) / (ampMax - ampMin) * maxAmpHeight;
-            ctx.strokeStyle = '#ADD8E6';
-            ctx.lineWidth = 1;
-            ctx.beginPath();
-            ctx.moveTo(x1, y1 - amp1);
-            ctx.lineTo(x1, y1 + amp1);
-            ctx.moveTo(x2, y2 - amp2);
-            ctx.lineTo(x2, y2 + amp2);
-            ctx.stroke();
+            if (y1 !== null && y2 !== null) { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); }
         }
+        ctx.stroke();
+
+        // Amplitude
+        ctx.strokeStyle = '#ADD8E6';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let i = 1; i < visibleData.length; i++) {
+            const d1 = visibleData[i-1], d2 = visibleData[i];
+            const x1 = ((d1.time - currentTime) / lookahead) * ctx.canvas.width;
+            const y1 = amplitudeToY((d1.amplitude - ampMin) / (ampMax - ampMin), ctx.canvas);
+            const x2 = ((d2.time - currentTime) / lookahead) * ctx.canvas.width;
+            const y2 = amplitudeToY((d2.amplitude - ampMin) / (ampMax - ampMin), ctx.canvas);
+            if (y1 !== null && y2 !== null) { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); }
+        }
+        ctx.stroke();
+
         drawTimeMarker(ctx, 0);
     }
 

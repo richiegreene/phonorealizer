@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Phonorealism Conductor</title>
+    <style>
+        body { font-family: sans-serif; padding: 1em; }
+    </style>
+</head>
+<body>
+    <h1>Phonorealism Conductor</h1>
+    <div>
+        <label for="csvFile">Load Score CSV:</label>
+        <input type="file" id="csvFile" accept=".csv">
+    </div>
+    <br>
+    <button id="startPerformance" disabled>Start Performance</button>
+    <h3>Log</h3>
+    <pre id="log" style="height: 150px; overflow-y: scroll; border: 1px solid #ccc; padding: 5px; background: #f9f9f9;"></pre>
+
+    <script src="conductor.js"></script>
+</body>
+</html>
