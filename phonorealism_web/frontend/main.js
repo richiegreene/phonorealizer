@@ -250,7 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function drawLive(ctx, currentTime) {
-        const lookbehind = 5; // seconds
+        const lookbehind = 2.5; // seconds (doubled scroll rate)
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         ctx.fillStyle = '#333333'; // Dark grey background
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
