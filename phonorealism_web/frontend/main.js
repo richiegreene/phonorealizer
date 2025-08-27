@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const partialSelector = document.getElementById('partialSelector');
     const micButton = document.getElementById('micButton');
     const toggleButton = document.getElementById('toggle');
+    const gainSlider = document.getElementById('micGain');
+    const gainValue = document.getElementById('gainValue');
     const logArea = document.getElementById('log');
     const liveCanvas = document.getElementById('live-visualizer');
     const scoreCanvas = document.getElementById('score-visualizer');
@@ -16,7 +18,11 @@ document.addEventListener('DOMContentLoaded', () => {
     let isRunning = false, isMicEnabled = false, isScoreLoaded = false;
     let startTime = 0, animationFrameId;
     let currentPitch = null;
-    let pitchMin = 200, pitchMax = 1200, ampMin = -60, ampMax = 0;
+    let pitchMin = 200, pitchMax = 1200, scoreAmpMaxLinear = 0.01;
+
+    // --- Constants for Layout ---
+    const PITCH_SECTION_HEIGHT_RATIO = 0.6; // 60% for pitch
+    const AMP_SECTION_HEIGHT_RATIO = 0.4;  // 40% for amplitude
 
     function logMessage(message) {
         const time = new Date().toLocaleTimeString();
@@ -61,9 +67,17 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     // --- 2. UI & Data Logic ---
+    gainSlider.addEventListener('input', () => {
+        gainValue.textContent = parseFloat(gainSlider.value).toFixed(1);
+    });
+
     partialSelector.addEventListener('change', () => {
         updateAxes(scoreData, parseInt(partialSelector.value, 10));
     });
+
+    function dbToLinear(db) {
+        return Math.pow(10, db / 20.0);
+    }
 
     function parseCSV(text) {
         const lines = text.split(/\r\n|\n/).slice(1);
@@ -92,9 +106,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const freqs = partialData.map(d => d.frequency);
             pitchMin = Math.min(...freqs) * 0.9;
             pitchMax = Math.max(...freqs) * 1.1;
-            const amps = partialData.map(d => d.amplitude);
-            ampMin = Math.min(...amps);
-            ampMax = Math.max(...amps);
+            
+            const ampsLinear = partialData.map(d => dbToLinear(d.amplitude));
+            scoreAmpMaxLinear = Math.max(...ampsLinear);
             logMessage(`Axes updated for partial ${partialIndex}.`);
         }
     }
@@ -150,7 +164,8 @@ document.addEventListener('DOMContentLoaded', () => {
         let sumOfSquares = 0;
         for (let i = 0; i < buffer.length; i++) { sumOfSquares += buffer[i] * buffer[i]; }
         const rms = Math.sqrt(sumOfSquares / buffer.length);
-        return Math.min(1, rms * 5); // Scale for better visualization
+        const gain = parseFloat(gainSlider.value);
+        return Math.min(1, rms * 50 * gain); // Apply a large base multiplier and the gain slider value
     }
 
     function stopVisualization() {
@@ -163,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
         logMessage("Visualization stopped.");
     }
 
-    // --- 4. Full Visualization ---
+    // --- 4. Mirrored Visualization ---
     function draw() {
         if (!isRunning) return;
 
@@ -178,19 +193,55 @@ document.addEventListener('DOMContentLoaded', () => {
         animationFrameId = requestAnimationFrame(draw);
     }
 
+    // Maps pitch to Y coordinate within the pitch section of the canvas
     function pitchToY(pitch, canvas) {
         if (pitch === null || pitch <= 0 || !isFinite(pitch)) return null;
         const logPitch = Math.log(pitch);
         const logMin = Math.log(pitchMin);
         const logMax = Math.log(pitchMax);
-        if (logMax === logMin) return canvas.height / 4;
+        
+        const pitchSectionHeight = canvas.height * PITCH_SECTION_HEIGHT_RATIO;
+
+        if (logMax === logMin) return pitchSectionHeight / 2;
         const scale = (logPitch - logMin) / (logMax - logMin);
-        return (canvas.height / 2) - (scale * canvas.height / 2);
+        return pitchSectionHeight - (scale * pitchSectionHeight);
     }
 
-    function amplitudeToY(amplitude, canvas) {
-        const ampHeight = Math.max(0, Math.min(1, amplitude)) * (canvas.height / 2);
-        return (canvas.height / 2) + ampHeight;
+    // Maps normalized amplitude (0-1) to Y coordinate within the amplitude section of the canvas
+    // 'mirror' determines if it's the top or bottom line of the mirrored pair
+    function amplitudeToY(normalizedAmplitude, canvas, mirror = false) {
+        const ampSectionHeight = canvas.height * AMP_SECTION_HEIGHT_RATIO;
+        const ampSectionTop = canvas.height * PITCH_SECTION_HEIGHT_RATIO; // Top of amplitude section
+        const ampCenterY = ampSectionTop + (ampSectionHeight / 2); // Center of amplitude section
+
+        const ampValue = normalizedAmplitude * (ampSectionHeight / 2); // Scale to half section height
+
+        if (mirror) {
+            return ampCenterY - ampValue; // Top line
+        } else {
+            return ampCenterY + ampValue; // Bottom line
+        }
+    }
+
+    // Generic function to draw a graph (pitch or amplitude)
+    function drawGraph(ctx, data, xProp, yFunc, color, lineWidth) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        let firstPoint = true;
+        for (const d of data) {
+            const x = d[xProp];
+            const y = yFunc(d);
+            if (y !== null) {
+                if (firstPoint) {
+                    ctx.moveTo(x, y);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+        }
+        ctx.stroke();
     }
 
     function drawLive(ctx, currentTime) {
@@ -198,42 +249,26 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         ctx.fillStyle = '#f0f0f0';
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+        // Draw dividing line
         ctx.strokeStyle = '#000000';
-        ctx.strokeRect(0, 0, ctx.canvas.width, ctx.canvas.height);
-        ctx.beginPath();
-        ctx.moveTo(0, ctx.canvas.height / 2);
-        ctx.lineTo(ctx.canvas.width, ctx.canvas.height / 2);
-        ctx.stroke();
-
-        // Draw pitch
-        ctx.strokeStyle = '#FF0000';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        let lastY = null;
-        for (const d of liveHistory) {
-            const x = ((d.time - currentTime) / lookbehind) * ctx.canvas.width + ctx.canvas.width;
-            const y = pitchToY(d.pitch, ctx.canvas);
-            if (y !== null) {
-                if (lastY === null) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
-            }
-            lastY = y;
-        }
-        ctx.stroke();
-
-        // Draw amplitude
-        ctx.strokeStyle = '#FFA500';
         ctx.lineWidth = 1;
         ctx.beginPath();
-        lastY = null;
-        for (const d of liveHistory) {
-            const x = ((d.time - currentTime) / lookbehind) * ctx.canvas.width + ctx.canvas.width;
-            const y = amplitudeToY(d.amplitude, ctx.canvas);
-            if (y !== null) {
-                if (lastY === null) { ctx.moveTo(x, y); } else { ctx.lineTo(x, y); }
-            }
-            lastY = y;
-        }
+        ctx.moveTo(0, ctx.canvas.height * PITCH_SECTION_HEIGHT_RATIO);
+        ctx.lineTo(ctx.canvas.width, ctx.canvas.height * PITCH_SECTION_HEIGHT_RATIO);
         ctx.stroke();
+
+        const timedData = liveHistory.map(d => ({
+            ...d,
+            x: ((d.time - currentTime) / lookbehind) * ctx.canvas.width + ctx.canvas.width
+        })).filter(d => d.x >= 0 && d.x <= ctx.canvas.width); // Filter to visible range
+
+        // Draw pitch graph
+        drawGraph(ctx, timedData, 'x', d => pitchToY(d.pitch, ctx.canvas), 'red', 2);
+
+        // Draw amplitude graphs (mirrored)
+        drawGraph(ctx, timedData, 'x', d => amplitudeToY(d.amplitude, ctx.canvas, true), 'orange', 1); // Top mirrored line
+        drawGraph(ctx, timedData, 'x', d => amplitudeToY(d.amplitude, ctx.canvas, false), 'orange', 1); // Bottom mirrored line
 
         drawTimeMarker(ctx, ctx.canvas.width);
     }
@@ -243,11 +278,13 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         ctx.fillStyle = '#f0f0f0';
         ctx.fillRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+
+        // Draw dividing line
         ctx.strokeStyle = '#000000';
-        ctx.strokeRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.moveTo(0, ctx.canvas.height / 2);
-        ctx.lineTo(ctx.canvas.width, ctx.canvas.height / 2);
+        ctx.moveTo(0, ctx.canvas.height * PITCH_SECTION_HEIGHT_RATIO);
+        ctx.lineTo(ctx.canvas.width, ctx.canvas.height * PITCH_SECTION_HEIGHT_RATIO);
         ctx.stroke();
 
         const visibleData = scoreData.filter(d => 
@@ -256,33 +293,17 @@ document.addEventListener('DOMContentLoaded', () => {
             d.time < currentTime + lookahead
         );
 
-        // Draw pitch
-        ctx.strokeStyle = '#0000FF';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        for (let i = 1; i < visibleData.length; i++) {
-            const d1 = visibleData[i-1], d2 = visibleData[i];
-            const x1 = ((d1.time - currentTime) / lookahead) * ctx.canvas.width;
-            const y1 = pitchToY(d1.frequency, ctx.canvas);
-            const x2 = ((d2.time - currentTime) / lookahead) * ctx.canvas.width;
-            const y2 = pitchToY(d2.frequency, ctx.canvas);
-            if (y1 !== null && y2 !== null) { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); }
-        }
-        ctx.stroke();
+        const timedData = visibleData.map(d => ({
+            ...d,
+            x: ((d.time - currentTime) / lookahead) * ctx.canvas.width
+        }));
 
-        // Draw amplitude
-        ctx.strokeStyle = '#ADD8E6';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        for (let i = 1; i < visibleData.length; i++) {
-            const d1 = visibleData[i-1], d2 = visibleData[i];
-            const x1 = ((d1.time - currentTime) / lookahead) * ctx.canvas.width;
-            const y1 = amplitudeToY((d1.amplitude - ampMin) / (ampMax - ampMin), ctx.canvas);
-            const x2 = ((d2.time - currentTime) / lookahead) * ctx.canvas.width;
-            const y2 = amplitudeToY((d2.amplitude - ampMin) / (ampMax - ampMin), ctx.canvas);
-            if (y1 !== null && y2 !== null) { ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); }
-        }
-        ctx.stroke();
+        // Draw pitch graph
+        drawGraph(ctx, timedData, 'x', d => pitchToY(d.frequency, ctx.canvas), 'blue', 2);
+
+        // Draw amplitude graphs (mirrored)
+        drawGraph(ctx, timedData, 'x', d => amplitudeToY(dbToLinear(d.amplitude) / scoreAmpMaxLinear, ctx.canvas, true), '#ADD8E6', 1); // Top mirrored line
+        drawGraph(ctx, timedData, 'x', d => amplitudeToY(dbToLinear(d.amplitude) / scoreAmpMaxLinear, ctx.canvas, false), '#ADD8E6', 1); // Bottom mirrored line
 
         drawTimeMarker(ctx, 0);
     }
