@@ -1,6 +1,11 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from typing import List
 import json
+import asyncio
+import uvicorn
+
+# Import the conductor backend's main function
+from .conductor_backend import main as run_conductor_backend
 
 app = FastAPI()
 
@@ -60,3 +65,17 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         print(f"Error: {e}")
         manager.disconnect(websocket)
+
+async def run_fastapi_server():
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000, log_level="info")
+    server = uvicorn.Server(config)
+    await server.serve()
+
+async def start_all_backends():
+    # Run both backends concurrently
+    await asyncio.gather(
+        run_fastapi_server(),
+        run_conductor_backend()
+    )
+
+# Remove the if __name__ == "__main__": block from here

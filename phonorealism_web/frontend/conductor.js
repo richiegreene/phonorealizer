@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const stopButton = document.getElementById('stopButton');
     const logArea = document.getElementById('log');
 
-    const WS_URL = "ws://localhost:8000/ws";
+    const WS_URL = "ws://localhost:8001/ws";
     const socket = new WebSocket(WS_URL);
 
     function logMessage(message) {
