@@ -5,7 +5,7 @@ import asyncio
 import uvicorn
 
 # Import the conductor backend's main function
-from .conductor_backend import main as run_conductor_backend
+from conductor_backend import main as run_conductor_backend
 
 app = FastAPI()
 
