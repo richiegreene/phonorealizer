@@ -5,131 +5,135 @@ import sounddevice as sd
 import numpy as np
 import csv
 import io
+import time as time_module
+from collections import defaultdict
 
-# Configuration for the WebSocket server
+# Configuration
 WS_HOST = "localhost"
-WS_PORT = 8001  # Use a different port than the existing backend (8000)
-
-# Performer Backend WebSocket URL
+WS_PORT = 8001
 PERFORMER_WS_URL = "ws://localhost:8000/ws"
+SAMPLE_RATE = 44100
+BLOCK_SIZE = 1024
+DEVICE_CHANNELS = 2 # Stereo output
+
+# Global State
 performer_websocket = None
-
-# Audio parameters
-SAMPLE_RATE = 44100  # Hz
-CHANNELS = 2       # Default, will be dynamically set based on score
-BLOCK_SIZE = 512   # Audio processing block size
-
-# Global state for audio playback
-score_events = [] # Parsed CSV data
-score_event_index = 0 # To efficiently track our position in the score
-channel_map = {}  # Maps harmonic_index to output_channel_index
-active_voices = {} # {harmonic_index: {'phase': float, 'amplitude': float}}
-current_position = 0 # in samples
+pre_rendered_audio = None
+current_position = 0
 is_playing = False
-
-audio_stream = None # Global audio stream object
+audio_stream = None
 
 def db_to_linear(db):
     return 10**(db / 20.0)
 
-def parse_csv_score(csv_content):
-    global channel_map, CHANNELS
-    events = []
-    harmonic_indices = set()
+def _group_events_by_harmonic(events):
+    harmonics = defaultdict(list)
+    for event in events:
+        harmonics[event['harmonic_index']].append(
+            (event['time'], event['frequency'], event['amplitude'])
+        )
+    # Return a list of harmonics, where each harmonic is a list of (time, freq, amp) tuples
+    return [harmonics[key] for key in sorted(harmonics.keys())]
+
+def pre_render_score(events):
+    if not events:
+        print("Cannot render an empty score.")
+        return None
+
+    print("Starting pre-rendering of the score using interpolation method...")
+    start_time = time_module.time()
+
+    harmonics = _group_events_by_harmonic(events)
     
-    csv_file = io.StringIO(csv_content)
-    reader = csv.reader(csv_file)
+    total_duration = max(event['time'] for event in events) + 1.0 # Add a second of tail
+    total_samples = int(total_duration * SAMPLE_RATE)
     
-    header = next(reader) # Skip header row
-    
-    for row in reader:
-        try:
-            # Assuming CSV format: time,harmonic_index,frequency,amplitude
-            time = float(row[0])
-            harmonic_index = int(row[1])
-            frequency = float(row[2])
-            amplitude_db = float(row[3])
-            
-            events.append({
-                'time': time,
-                'harmonic_index': harmonic_index,
-                'frequency': frequency,
-                'amplitude': db_to_linear(amplitude_db) # Convert dB to linear
-            })
-            harmonic_indices.add(harmonic_index)
-        except (ValueError, IndexError) as e:
-            print(f"Skipping malformed CSV row: {row} - {e}")
+    # Master waveform buffer
+    master_waveform = np.zeros(total_samples, dtype=np.float32)
+
+    for harmonic_events in harmonics:
+        if not harmonic_events:
             continue
+
+        # Unzip the event tuples into separate arrays for interpolation
+        time_array, freq_array, amp_array = zip(*harmonic_events)
+
+        # Transpose frequency down by one octave as requested
+        freq_array = np.array(freq_array) / 2
+
+        # Create the master time vector for the entire duration
+        t = np.linspace(0, total_duration, total_samples)
+        
+        # Interpolate frequency and amplitude over the master time vector
+        # This creates smoothly varying frequency and amplitude envelopes
+        freq_interp = np.interp(t, time_array, freq_array)
+        amp_interp = np.interp(t, time_array, amp_array)
+
+        # Calculate phase by integrating frequency (using cumulative sum)
+        # This is the correct way to handle variable-frequency oscillators
+        phase = 2 * np.pi * np.cumsum(freq_interp) / SAMPLE_RATE
+        
+        # Generate the waveform for this single harmonic
+        partial_wave = amp_interp * np.sin(phase)
+
+        # Add this harmonic's waveform to the master mix
+        master_waveform += partial_wave
+
+    print("Downmixing to stereo and normalizing...")
+    # Tile the mono signal to stereo
+    stereo_output = np.tile(master_waveform[:, np.newaxis], (1, DEVICE_CHANNELS))
     
-    # Sort events by time to enable efficient processing
-    events.sort(key=lambda e: e['time'])
-            
-    # Create channel map and set CHANNELS
-    sorted_harmonics = sorted(list(harmonic_indices))
-    channel_map = {harmonic: i for i, harmonic in enumerate(sorted_harmonics)}
-    CHANNELS = len(sorted_harmonics) if len(sorted_harmonics) > 0 else 1 # Ensure at least 1 channel
-    
-    print(f"Parsed and sorted {len(events)} events. Found {len(harmonic_indices)} unique harmonics. Setting {CHANNELS} channels.")
+    # Normalize the final audio to prevent clipping
+    max_abs = np.max(np.abs(stereo_output))
+    if max_abs > 0:
+        stereo_output /= max_abs
+
+    end_time = time_module.time()
+    print(f"Pre-rendering finished in {end_time - start_time:.2f} seconds.")
+    return stereo_output
+
+def parse_csv_score(csv_content):
+    events = []
+    try:
+        csv_file = io.StringIO(csv_content)
+        reader = csv.reader(csv_file)
+        header = next(reader)
+        for row in reader:
+            events.append({
+                'time': float(row[0]),
+                'harmonic_index': int(row[1]),
+                'frequency': float(row[2]),
+                'amplitude': db_to_linear(float(row[3]))
+            })
+        # Sorting is important for grouping by harmonic correctly
+        events.sort(key=lambda e: e['time'])
+        print(f"Parsed and sorted {len(events)} events.")
+    except (ValueError, IndexError, StopIteration) as e:
+        print(f"Error parsing CSV: {e}")
     return events
 
 def audio_callback(outdata, frames, time, status):
-    global is_playing, current_position, score_events, score_event_index, active_voices, channel_map, CHANNELS
+    global is_playing, current_position, pre_rendered_audio
 
     if status:
-        print(status)
+        print(status, file=sys.stderr)
 
-    if not is_playing or not score_events:
+    if not is_playing or pre_rendered_audio is None:
         outdata.fill(0)
         return
 
-    # Initialize a buffer for the source channels from the score
-    output_buffer = np.zeros((frames, CHANNELS if CHANNELS > 0 else 1), dtype=np.float32)
+    start = current_position
+    end = start + frames
     
-    # Efficiently process events for the current audio block
-    block_end_time = (current_position + frames) / SAMPLE_RATE
-    while score_event_index < len(score_events) and score_events[score_event_index]['time'] < block_end_time:
-        event = score_events[score_event_index]
-        harmonic = event['harmonic_index']
-        if harmonic in channel_map:
-            # When a new event for a harmonic occurs, update its state.
-            active_voices[harmonic] = {
-                'frequency': event['frequency'],
-                'amplitude': event['amplitude'],
-                'phase': active_voices.get(harmonic, {}).get('phase', 0.0) # Retain phase
-            }
-        score_event_index += 1
-
-    # Generate and mix sine waves for currently active voices
-    for harmonic, voice_state in list(active_voices.items()):
-        original_frequency = voice_state['frequency']
-        amplitude = voice_state['amplitude']
-        phase = voice_state['phase']
-        channel_idx = channel_map.get(harmonic)
-
-        # Transpose frequency down by one octave (/ 2) as requested
-        transposed_frequency = original_frequency / 2
-
-        if channel_idx is not None and channel_idx < CHANNELS:
-            t = (np.arange(frames) + current_position) / SAMPLE_RATE
-            
-            sine_wave = amplitude * np.sin(2 * np.pi * transposed_frequency * t + phase)
-            output_buffer[:, channel_idx] += sine_wave
-            
-            # Update phase for the next block using the transposed frequency
-            voice_state['phase'] = (phase + 2 * np.pi * transposed_frequency * frames / SAMPLE_RATE) % (2 * np.pi)
-            active_voices[harmonic] = voice_state
-
-    # Downmix the multi-channel buffer to stereo for the output device
-    if CHANNELS > 1:
-        mono_signal = np.mean(output_buffer, axis=1)
-        mixed_output = np.tile(mono_signal[:, np.newaxis], (1, outdata.shape[1]))
-    elif CHANNELS == 1:
-        mixed_output = np.tile(output_buffer, (1, outdata.shape[1]))
+    remaining_frames = len(pre_rendered_audio) - start
+    if remaining_frames >= frames:
+        outdata[:] = pre_rendered_audio[start:end]
     else:
-        mixed_output = np.zeros_like(outdata)
-
-    # Clip the final signal and assign to outdata
-    np.clip(mixed_output, -1.0, 1.0, out=outdata)
+        # Reached the end of the pre-rendered audio
+        outdata[:remaining_frames] = pre_rendered_audio[start:]
+        outdata[remaining_frames:] = 0 # Fill the rest with silence
+        is_playing = False # Stop playback
+        print("Playback finished.")
 
     current_position += frames
 
@@ -140,9 +144,8 @@ async def connect_to_performer_backend():
             print(f"Attempting to connect to Performer backend at {PERFORMER_WS_URL}...")
             performer_websocket = await websockets.connect(PERFORMER_WS_URL)
             print("Connected to Performer backend.")
-            # Identify this backend to the hub
             await performer_websocket.send(json.dumps({"type": "conductor_join"}))
-            break # Exit loop on successful connection
+            break
         except ConnectionRefusedError:
             print("Performer backend hub not available, retrying in 3 seconds...")
             await asyncio.sleep(3)
@@ -151,27 +154,21 @@ async def connect_to_performer_backend():
             await asyncio.sleep(3)
 
 async def start_audio_stream():
-    global audio_stream, CHANNELS, SAMPLE_RATE, BLOCK_SIZE
-    # Define the number of output channels for the audio device (stereo).
-    DEVICE_CHANNELS = 2
-    if audio_stream is not None and audio_stream.active:
+    global audio_stream
+    if audio_stream and audio_stream.active:
         audio_stream.stop()
         audio_stream.close()
-        print("Existing audio stream stopped and closed.")
-
+        print("Existing audio stream stopped.")
     try:
-        print(f"Opening stereo audio stream ({DEVICE_CHANNELS} channels) for mixing {CHANNELS} score channels.")
+        print(f"Opening stereo audio stream ({DEVICE_CHANNELS} channels).")
         audio_stream = sd.OutputStream(samplerate=SAMPLE_RATE, channels=DEVICE_CHANNELS, blocksize=BLOCK_SIZE, callback=audio_callback)
         audio_stream.start()
-        print(f"Audio stream started. Default output device: {sd.query_devices(kind='output')['name']}")
+        print(f"Audio stream started. Device: {sd.query_devices(kind='output')['name']}")
     except Exception as e:
         print(f"Failed to start audio stream: {e}")
-        print("Please ensure you have an audio output device configured and sounddevice is installed correctly.")
-        print("You might need to install portaudio: 'brew install portaudio' (macOS) or 'sudo apt-get install libportaudio2' (Debian/Ubuntu)")
-        print("Then install sounddevice: 'pip install sounddevice'")
 
 async def handle_websocket(websocket, path):
-    global is_playing, current_position, score_events, score_event_index, channel_map, CHANNELS, performer_websocket
+    global is_playing, current_position, pre_rendered_audio
 
     print(f"Conductor backend client connected: {websocket.remote_address}")
     try:
@@ -180,98 +177,50 @@ async def handle_websocket(websocket, path):
             msg_type = data.get("type")
             payload = data.get("payload")
 
-            print(f"Received message: {msg_type}")
-
             if msg_type == "load_score":
-                score_events = parse_csv_score(payload) # Parse the CSV content
-                print(f"Loaded score data with {len(score_events)} events.")
-                current_position = 0 # Reset position on new score load
-                score_event_index = 0 # Reset score event index
-                is_playing = False # Ensure not playing until 'start'
-                await start_audio_stream() # Start/re-start audio stream with correct channels
-
-                # Forward the load_score message to the Performer backend
+                events = parse_csv_score(payload)
+                pre_rendered_audio = pre_render_score(events)
+                current_position = 0
+                is_playing = False
+                await start_audio_stream()
                 if performer_websocket and performer_websocket.open:
-                    try:
-                        await performer_websocket.send(json.dumps({"type": "load_score", "payload": payload}))
-                        print("Forwarded load_score to Performer backend.")
-                    except Exception as e:
-                        print(f"Error forwarding load_score to Performer backend: {e}")
-                        performer_websocket = None # Mark as disconnected
-                else:
-                    print("Performer backend not connected, cannot forward load_score.")
+                    await performer_websocket.send(json.dumps({"type": "load_score", "payload": payload}))
 
             elif msg_type == "start_performance":
-                if not is_playing:
-                    print("Starting performance...")
-                    # If starting from the beginning, reset the event index
-                    if current_position == 0:
-                        score_event_index = 0
+                if not is_playing and pre_rendered_audio is not None:
+                    print("Starting playback...")
+                    if current_position >= len(pre_rendered_audio):
+                        current_position = 0 # Restart if at the end
                     is_playing = True
-                # Forward start_performance to Performer backend
                 if performer_websocket and performer_websocket.open:
-                    try:
-                        await performer_websocket.send(json.dumps({"type": "start_performance"}))
-                        print("Forwarded start_performance to Performer backend.")
-                    except Exception as e:
-                        print(f"Error forwarding start_performance to Performer backend: {e}")
-                        performer_websocket = None
+                    await performer_websocket.send(json.dumps({"type": "start_performance"}))
 
             elif msg_type == "pause_performance":
-                print("Pausing performance...")
-                is_playing = False
-                # Forward pause_performance to Performer backend
+                if is_playing:
+                    print("Pausing playback...")
+                    is_playing = False
                 if performer_websocket and performer_websocket.open:
-                    try:
-                        await performer_websocket.send(json.dumps({"type": "pause_performance"}))
-                        print("Forwarded pause_performance to Performer backend.")
-                    except Exception as e:
-                        print(f"Error forwarding pause_performance to Performer backend: {e}")
-                        performer_websocket = None
+                    await performer_websocket.send(json.dumps({"type": "pause_performance"}))
 
             elif msg_type == "stop_performance":
-                print("Stopping performance and resetting position...")
+                print("Stopping playback and resetting position...")
                 is_playing = False
-                current_position = 0 # Reset to beginning
-                score_event_index = 0 # Reset score event index
-                # Forward stop_performance to Performer backend
+                current_position = 0
                 if performer_websocket and performer_websocket.open:
-                    try:
-                        await performer_websocket.send(json.dumps({"type": "stop_performance"}))
-                        print("Forwarded stop_performance to Performer backend.")
-                    except Exception as e:
-                        print(f"Error forwarding stop_performance to Performer backend: {e}")
-                        performer_websocket = None
+                    await performer_websocket.send(json.dumps({"type": "stop_performance"}))
 
-            elif msg_type == "conductor_join":
-                print("Conductor joined.")
-            else:
-                print(f"Unknown message type: {msg_type}")
-
-    except websockets.exceptions.ConnectionClosedOK:
-        print("Conductor backend disconnected gracefully.")
-    except websockets.exceptions.ConnectionClosedError as e:
-        print(f"Conductor backend disconnected with error: {e}")
     except Exception as e:
-        print(f"Unexpected error in WebSocket handler: {e}")
+        print(f"WebSocket handler error: {e}")
 
 async def main():
-    # Start the task to connect to the Performer backend
     asyncio.create_task(connect_to_performer_backend())
-
-    # Initial audio stream setup (will be re-initialized on load_score)
-    # This ensures a stream is active even before a score is loaded
-    await start_audio_stream()
-
-    try:
-        print(f"WebSocket server starting on ws://{WS_HOST}:{WS_PORT}")
-        async with websockets.serve(handle_websocket, WS_HOST, WS_PORT, max_size=10 * 1024 * 1024):
-            await asyncio.Future()  # Run forever
-    except Exception as e:
-        print(f"Failed to start WebSocket server: {e}")
-        print("Please ensure you have an audio output device configured and sounddevice is installed correctly.")
-        print("You might need to install portaudio: 'brew install portaudio' (macOS) or 'sudo apt-get install libportaudio2' (Debian/Ubuntu)")
-        print("Then install sounddevice: 'pip install sounddevice'")
+    await start_audio_stream() # Start with a silent stream
+    print(f"WebSocket server starting on ws://{WS_HOST}:{WS_PORT}")
+    async with websockets.serve(handle_websocket, WS_HOST, WS_PORT, max_size=10*1024*1024):
+        await asyncio.Future()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Shutting down...")
