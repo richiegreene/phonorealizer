@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QScrollArea, QGridLayout, QFrame, QPushButton, QHBoxLayout, QFileDialog
 )
 from PySide6.QtCore import Signal, QObject, Qt
+from PySide6.QtGui import QPalette, QColor
 
 # --- Global Process Management ---
 processes = []
@@ -89,10 +90,11 @@ class ControlPanel(QMainWindow):
         self.layout.addWidget(self.status_label)
         self.layout.addWidget(QLabel("Audio Output Device:"))
         self.layout.addWidget(self.device_combo)
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        self.layout.addWidget(line)
+        
+        line1 = QFrame()
+        line1.setFrameShape(QFrame.Shape.HLine)
+        line1.setFrameShadow(QFrame.Shadow.Sunken)
+        self.layout.addWidget(line1)
 
         # --- File & Playback Controls ---
         self.file_label = QLabel("No CSV file loaded.")
@@ -108,10 +110,11 @@ class ControlPanel(QMainWindow):
         controls_layout.addWidget(self.pause_button)
         controls_layout.addWidget(self.stop_button)
         self.layout.addLayout(controls_layout)
-        line = QFrame()
-        line.setFrameShape(QFrame.Shape.HLine)
-        line.setFrameShadow(QFrame.Shadow.Sunken)
-        self.layout.addWidget(line)
+        
+        line2 = QFrame()
+        line2.setFrameShape(QFrame.Shape.HLine)
+        line2.setFrameShadow(QFrame.Shadow.Sunken)
+        self.layout.addWidget(line2)
 
         # --- Harmonics Panning Controls ---
         self.harmonics_label = QLabel("Harmonic Channel Routing (Load a score to populate)")
@@ -200,7 +203,7 @@ class ControlPanel(QMainWindow):
         try:
             backend_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'backend')
             python_executable = sys.executable
-            fastapi_cmd = [python_executable, "-m", "uvicorn", "main:app", "--port", "8000", "--ws-max-size", "10485760"] # 10 MB limit
+            fastapi_cmd = [python_executable, "-m", "uvicorn", "main:app", "--port", "8000", "--ws-max-size", "10485760"]
             processes.append(subprocess.Popen(fastapi_cmd, cwd=backend_dir))
             conductor_cmd = [python_executable, "conductor_backend.py"]
             processes.append(subprocess.Popen(conductor_cmd, cwd=backend_dir))
@@ -211,6 +214,25 @@ class ControlPanel(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
+    
+    # Set dark theme palette
+    app.setStyle("Fusion")
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor(53, 53, 53))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor(255, 255, 255))
+    palette.setColor(QPalette.ColorRole.Base, QColor(25, 25, 25))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor(53, 53, 53))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor(255, 255, 255))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor(255, 255, 255))
+    palette.setColor(QPalette.ColorRole.Text, QColor(255, 255, 255))
+    palette.setColor(QPalette.ColorRole.Button, QColor(53, 53, 53))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor(255, 255, 255))
+    palette.setColor(QPalette.ColorRole.BrightText, QColor(255, 0, 0))
+    palette.setColor(QPalette.ColorRole.Link, QColor(42, 130, 218))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor(42, 130, 218))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor(0, 0, 0))
+    app.setPalette(palette)
+
     control_panel = ControlPanel()
     control_panel.show()
     sys.exit(app.exec())
