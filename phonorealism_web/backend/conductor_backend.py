@@ -21,6 +21,7 @@ BLOCK_SIZE = 512   # Audio processing block size
 
 # Global state for audio playback
 score_events = [] # Parsed CSV data
+score_event_index = 0 # To efficiently track our position in the score
 channel_map = {}  # Maps harmonic_index to output_channel_index
 active_voices = {} # {harmonic_index: {'phase': float, 'amplitude': float}}
 current_position = 0 # in samples
@@ -59,62 +60,68 @@ def parse_csv_score(csv_content):
         except (ValueError, IndexError) as e:
             print(f"Skipping malformed CSV row: {row} - {e}")
             continue
+    
+    # Sort events by time to enable efficient processing
+    events.sort(key=lambda e: e['time'])
             
     # Create channel map and set CHANNELS
     sorted_harmonics = sorted(list(harmonic_indices))
     channel_map = {harmonic: i for i, harmonic in enumerate(sorted_harmonics)}
     CHANNELS = len(sorted_harmonics) if len(sorted_harmonics) > 0 else 1 # Ensure at least 1 channel
     
-    print(f"Parsed {len(events)} events. Found {len(harmonic_indices)} unique harmonics. Setting {CHANNELS} channels.")
+    print(f"Parsed and sorted {len(events)} events. Found {len(harmonic_indices)} unique harmonics. Setting {CHANNELS} channels.")
     return events
 
 def audio_callback(outdata, frames, time, status):
-    global is_playing, current_position, score_events, active_voices, channel_map, CHANNELS
+    global is_playing, current_position, score_events, score_event_index, active_voices, channel_map, CHANNELS
 
     if status:
         print(status)
-
-    # Initialize a buffer for the source channels from the score
-    output_buffer = np.zeros((frames, CHANNELS if CHANNELS > 0 else 1), dtype=np.float32)
 
     if not is_playing or not score_events:
         outdata.fill(0)
         return
 
-    # Calculate time range for this block
-    block_start_time = current_position / SAMPLE_RATE
+    # Initialize a buffer for the source channels from the score
+    output_buffer = np.zeros((frames, CHANNELS if CHANNELS > 0 else 1), dtype=np.float32)
+    
+    # Efficiently process events for the current audio block
     block_end_time = (current_position + frames) / SAMPLE_RATE
+    while score_event_index < len(score_events) and score_events[score_event_index]['time'] < block_end_time:
+        event = score_events[score_event_index]
+        harmonic = event['harmonic_index']
+        if harmonic in channel_map:
+            # When a new event for a harmonic occurs, update its state.
+            active_voices[harmonic] = {
+                'frequency': event['frequency'],
+                'amplitude': event['amplitude'],
+                'phase': active_voices.get(harmonic, {}).get('phase', 0.0) # Retain phase
+            }
+        score_event_index += 1
 
-    # Update active voices based on score events
-    for event in score_events:
-        if block_start_time <= event['time'] < block_end_time:
-            harmonic = event['harmonic_index']
-            if harmonic in channel_map:
-                active_voices[harmonic] = {
-                    'frequency': event['frequency'],
-                    'amplitude': event['amplitude'],
-                    'phase': active_voices.get(harmonic, {}).get('phase', 0.0)
-                }
-            
-    # Generate and mix sine waves for active voices
+    # Generate and mix sine waves for currently active voices
     for harmonic, voice_state in list(active_voices.items()):
-        frequency = voice_state['frequency']
+        original_frequency = voice_state['frequency']
         amplitude = voice_state['amplitude']
         phase = voice_state['phase']
         channel_idx = channel_map.get(harmonic)
 
+        # Transpose frequency down by one octave (/ 2) as requested
+        transposed_frequency = original_frequency / 2
+
         if channel_idx is not None and channel_idx < CHANNELS:
             t = (np.arange(frames) + current_position) / SAMPLE_RATE
-            sine_wave = amplitude * np.pi * np.sin(2 * np.pi * frequency * t + phase)
+            
+            sine_wave = amplitude * np.sin(2 * np.pi * transposed_frequency * t + phase)
             output_buffer[:, channel_idx] += sine_wave
-            voice_state['phase'] = (phase + 2 * np.pi * frequency * frames / SAMPLE_RATE) % (2 * np.pi)
+            
+            # Update phase for the next block using the transposed frequency
+            voice_state['phase'] = (phase + 2 * np.pi * transposed_frequency * frames / SAMPLE_RATE) % (2 * np.pi)
             active_voices[harmonic] = voice_state
 
     # Downmix the multi-channel buffer to stereo for the output device
     if CHANNELS > 1:
-        # Simple mono downmix by averaging all source channels
         mono_signal = np.mean(output_buffer, axis=1)
-        # Tile the mono signal across the available device channels (e.g., 2 for stereo)
         mixed_output = np.tile(mono_signal[:, np.newaxis], (1, outdata.shape[1]))
     elif CHANNELS == 1:
         mixed_output = np.tile(output_buffer, (1, outdata.shape[1]))
@@ -164,7 +171,7 @@ async def start_audio_stream():
         print("Then install sounddevice: 'pip install sounddevice'")
 
 async def handle_websocket(websocket, path):
-    global is_playing, current_position, score_events, channel_map, CHANNELS, performer_websocket
+    global is_playing, current_position, score_events, score_event_index, channel_map, CHANNELS, performer_websocket
 
     print(f"Conductor backend client connected: {websocket.remote_address}")
     try:
@@ -179,6 +186,7 @@ async def handle_websocket(websocket, path):
                 score_events = parse_csv_score(payload) # Parse the CSV content
                 print(f"Loaded score data with {len(score_events)} events.")
                 current_position = 0 # Reset position on new score load
+                score_event_index = 0 # Reset score event index
                 is_playing = False # Ensure not playing until 'start'
                 await start_audio_stream() # Start/re-start audio stream with correct channels
 
@@ -196,6 +204,9 @@ async def handle_websocket(websocket, path):
             elif msg_type == "start_performance":
                 if not is_playing:
                     print("Starting performance...")
+                    # If starting from the beginning, reset the event index
+                    if current_position == 0:
+                        score_event_index = 0
                     is_playing = True
                 # Forward start_performance to Performer backend
                 if performer_websocket and performer_websocket.open:
@@ -222,6 +233,7 @@ async def handle_websocket(websocket, path):
                 print("Stopping performance and resetting position...")
                 is_playing = False
                 current_position = 0 # Reset to beginning
+                score_event_index = 0 # Reset score event index
                 # Forward stop_performance to Performer backend
                 if performer_websocket and performer_websocket.open:
                     try:
