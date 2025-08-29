@@ -22,6 +22,7 @@ pre_rendered_audio = None
 current_position = 0
 is_playing = False
 audio_stream = None
+selected_output_device = None # Will store the device ID selected by the user
 
 def db_to_linear(db):
     return 10**(db / 20.0)
@@ -154,21 +155,35 @@ async def connect_to_performer_backend():
             await asyncio.sleep(3)
 
 async def start_audio_stream():
-    global audio_stream
+    global audio_stream, selected_output_device
     if audio_stream and audio_stream.active:
         audio_stream.stop()
         audio_stream.close()
         print("Existing audio stream stopped.")
     try:
-        print(f"Opening stereo audio stream ({DEVICE_CHANNELS} channels).")
-        audio_stream = sd.OutputStream(samplerate=SAMPLE_RATE, channels=DEVICE_CHANNELS, blocksize=BLOCK_SIZE, callback=audio_callback)
+        device_name = 'default'
+        if selected_output_device is not None:
+            try:
+                device_info = sd.query_devices(selected_output_device, 'output')
+                device_name = device_info['name']
+            except Exception as e:
+                print(f"Could not query device ID {selected_output_device}: {e}")
+        
+        print(f"Opening stereo audio stream on device: {device_name}")
+        audio_stream = sd.OutputStream(
+            samplerate=SAMPLE_RATE, 
+            channels=DEVICE_CHANNELS, 
+            blocksize=BLOCK_SIZE, 
+            callback=audio_callback,
+            device=selected_output_device # Use the selected device
+        )
         audio_stream.start()
-        print(f"Audio stream started. Device: {sd.query_devices(kind='output')['name']}")
+        print(f"Audio stream started successfully on {device_name}.")
     except Exception as e:
         print(f"Failed to start audio stream: {e}")
 
 async def handle_websocket(websocket, path):
-    global is_playing, current_position, pre_rendered_audio
+    global is_playing, current_position, pre_rendered_audio, selected_output_device
 
     print(f"Conductor backend client connected: {websocket.remote_address}")
     try:
@@ -208,6 +223,13 @@ async def handle_websocket(websocket, path):
                 current_position = 0
                 if performer_websocket and performer_websocket.open:
                     await performer_websocket.send(json.dumps({"type": "stop_performance"}))
+            
+            elif msg_type == "set_audio_device":
+                device_id = payload.get('device_id')
+                print(f"Received request to set audio device to: {device_id}")
+                selected_output_device = device_id
+                # Restart the audio stream to apply the new device
+                await start_audio_stream()
 
     except Exception as e:
         print(f"WebSocket handler error: {e}")
