@@ -63,7 +63,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- UI & Data Logic ---
     gainSlider.addEventListener('input', () => { gainValue.textContent = parseFloat(gainSlider.value).toFixed(1); });
     partialSelector.addEventListener('change', () => { updateAxes(scoreData, parseInt(partialSelector.value, 10)); });
-    toggleButton.addEventListener('click', () => { isRunning ? stopVisualization() : runVisualization(); });
 
     function dbToLinear(db) { return Math.pow(10, db / 20.0); }
     function parseCSV(text) {
@@ -128,7 +127,6 @@ document.addEventListener('DOMContentLoaded', () => {
         logMessage("Starting visualization...");
         startTime = audioContext.currentTime;
         isRunning = true;
-        toggleButton.textContent = 'Stop';
         liveHistory = [];
         pitchModel.getPitch(gotPitch);
         draw();
@@ -138,7 +136,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isRunning) return;
         logMessage("Visualization stopped.");
         isRunning = false;
-        toggleButton.textContent = 'Start';
         if (animationFrameId) { cancelAnimationFrame(animationFrameId); }
     }
 
