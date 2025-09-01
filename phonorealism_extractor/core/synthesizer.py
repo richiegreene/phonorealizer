@@ -33,12 +33,6 @@ def synthesize_from_partials(partials, sr, output_wav_path, duration, playback_s
     if not partials:
         return
 
-    print(f"Synthesizer: Received wavetable of shape {wavetable.shape if wavetable is not None else 'None'}")
-    if wavetable is None:
-        print("Synthesizer: Wavetable is None, using sine wave.")
-    else:
-        print("Synthesizer: Using provided wavetable.")
-
     adjusted_duration = duration / playback_speed
     waveform = np.zeros(int(sr * adjusted_duration))
 

@@ -20,7 +20,7 @@ class AudioPlayer(QObject):
         self.audio_output = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
         self.temp_wav_file = None
-        self.last_wavetable_name = "Sine"
+        self.last_wavetable_value = 0
 
         # Connect signals here and manage connections carefully
         self.media_player.positionChanged.connect(self._on_position_changed)
@@ -30,19 +30,16 @@ class AudioPlayer(QObject):
         current_position = self.media_player.position()
         
         wavetable = None
-        new_wavetable_name = "Sine"
+        new_wavetable_value = 0
         if hasattr(self.parent, 'wavetable_dialog') and self.parent.wavetable_dialog is not None:
             wavetable = self.parent.wavetable_dialog.get_wavetable()
-            new_wavetable_name = self.parent.wavetable_dialog.waveform_combo.currentText()
-            print(f"AudioPlayer: Received wavetable of shape {wavetable.shape if wavetable is not None else 'None'}")
-        else:
-            print("AudioPlayer: No wavetable dialog found or it is None.")
+            new_wavetable_value = self.parent.wavetable_dialog.slider.value()
 
-        wavetable_changed = new_wavetable_name != self.last_wavetable_name
+        wavetable_changed = new_wavetable_value != self.last_wavetable_value
 
         # If data is dirty or wavetable changed, always re-synthesize
         if harmonic_data.is_modified() or wavetable_changed:
-            self.last_wavetable_name = new_wavetable_name
+            self.last_wavetable_value = new_wavetable_value
             self._start_playback(harmonic_data, play_action_widget, start_position=current_position, wavetable=wavetable)
             return
 

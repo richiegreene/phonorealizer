@@ -1,6 +1,7 @@
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QComboBox, QWidget
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QSlider, QWidget
+from PySide6.QtCore import Qt
 
 class WavetableDialog(QDialog):
     def __init__(self, parent=None):
@@ -11,9 +12,9 @@ class WavetableDialog(QDialog):
         self.layout = QVBoxLayout(self)
 
         # --- UI Elements ---
-        self.waveform_combo = QComboBox()
-        self.waveform_combo.addItems(["Sine", "Square", "Sawtooth", "Triangle"])
-        self.layout.addWidget(self.waveform_combo)
+        self.slider = QSlider(Qt.Horizontal)
+        self.slider.setRange(0, 300)
+        self.layout.addWidget(self.slider)
 
         self.plot_widget = pg.PlotWidget()
         self.plot_widget.setYRange(-1.1, 1.1, padding=0)
@@ -23,34 +24,42 @@ class WavetableDialog(QDialog):
         self.waveform_plot = self.plot_widget.plot(pen=pg.mkPen('w', width=2))
         self.layout.addWidget(self.plot_widget)
 
+        # --- Generate Base Waveforms ---
+        self.wavetable_size = 512
+        x = np.arange(self.wavetable_size)
+        self.sine_wave = np.sin(2 * np.pi * x / self.wavetable_size)
+        self.triangle_wave = 2 * np.abs((x / self.wavetable_size) - 0.5) * 2 - 1
+        self.sawtooth_wave = (x / self.wavetable_size) * 2 - 1
+        self.square_wave = np.sign(np.sin(2 * np.pi * x / self.wavetable_size))
+
         # --- Connections ---
-        self.waveform_combo.currentTextChanged.connect(self.update_waveform)
+        self.slider.valueChanged.connect(self.update_waveform)
 
         # --- Initial State ---
         self.wavetable = None
-        self.update_waveform(self.waveform_combo.currentText())
+        self.update_waveform(self.slider.value())
 
-    def update_waveform(self, waveform_name):
-        """Generate and plot the selected waveform."""
-        wavetable_size = 512
-        x = np.arange(wavetable_size)
-
-        if waveform_name == "Sine":
-            self.wavetable = np.sin(2 * np.pi * x / wavetable_size)
-        elif waveform_name == "Square":
-            self.wavetable = np.sign(np.sin(2 * np.pi * x / wavetable_size))
-        elif waveform_name == "Sawtooth":
-            self.wavetable = (x / wavetable_size) * 2 - 1
-        elif waveform_name == "Triangle":
-            self.wavetable = 2 * np.abs((x / wavetable_size) - 0.5) * 2 - 1
-
+    def update_waveform(self, value):
+        """Generate and plot the interpolated waveform."""
+        if value <= 100:
+            # Sine to Triangle
+            mix = value / 100.0
+            wave1 = self.sine_wave
+            wave2 = self.triangle_wave
+        elif value <= 200:
+            # Triangle to Sawtooth
+            mix = (value - 100) / 100.0
+            wave1 = self.triangle_wave
+            wave2 = self.sawtooth_wave
+        else:
+            # Sawtooth to Square
+            mix = (value - 200) / 100.0
+            wave1 = self.sawtooth_wave
+            wave2 = self.square_wave
+        
+        self.wavetable = (1 - mix) * wave1 + mix * wave2
         self.waveform_plot.setData(self.wavetable)
 
     def get_wavetable(self):
         """Returns the current wavetable."""
-        print(f"WavetableDialog: Getting wavetable. Type: {self.waveform_combo.currentText()}")
-        if self.wavetable is not None:
-            print(f"WavetableDialog: Wavetable shape: {self.wavetable.shape}")
-        else:
-            print("WavetableDialog: Wavetable is None.")
         return self.wavetable

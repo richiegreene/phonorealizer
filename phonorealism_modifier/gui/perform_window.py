@@ -40,7 +40,7 @@ class PerformWindow(QMainWindow):
         self.media_player.positionChanged.connect(self.update_playback_position)
         self.input_gain_factor = 1.0 # Initial input gain factor
         self.is_log_scale = False # Initial scale for frequency plots is linear
-        self.last_wavetable_name = "Sine"
+        self.last_wavetable_value = 0
 
         self._init_ui()
 
@@ -332,9 +332,6 @@ class PerformWindow(QMainWindow):
             wavetable = None
             if hasattr(self, 'wavetable_dialog') and self.wavetable_dialog is not None:
                 wavetable = self.wavetable_dialog.get_wavetable()
-                print(f"PerformWindow: Received wavetable of shape {wavetable.shape if wavetable is not None else 'None'}")
-            else:
-                print("PerformWindow: No wavetable dialog found or it is None.")
 
             try:
                 synthesize_from_partials(partials_data, sr, output_path, duration, wavetable=wavetable)
@@ -345,14 +342,14 @@ class PerformWindow(QMainWindow):
                 traceback.print_exc()
 
     def toggle_playback(self):
-        new_wavetable_name = "Sine"
+        new_wavetable_value = 0
         if hasattr(self, 'wavetable_dialog') and self.wavetable_dialog is not None:
-            new_wavetable_name = self.wavetable_dialog.waveform_combo.currentText()
+            new_wavetable_value = self.wavetable_dialog.slider.value()
 
-        wavetable_changed = new_wavetable_name != self.last_wavetable_name
+        wavetable_changed = new_wavetable_value != self.last_wavetable_value
 
         if wavetable_changed:
-            self.last_wavetable_name = new_wavetable_name
+            self.last_wavetable_value = new_wavetable_value
             self.synthesize_partial() # Re-synthesize
 
         if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
