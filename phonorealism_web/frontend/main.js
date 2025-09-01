@@ -20,6 +20,10 @@ document.addEventListener('DOMContentLoaded', () => {
     let currentPitch = null;
     let pitchMin = 200, pitchMax = 1200, scoreAmpMaxLinear = 0.01;
 
+    // Constants for Live Pitch Range (Hz)
+    const LIVE_PITCH_MIN = 50; // Roughly low C
+    const LIVE_PITCH_MAX = 2000; // Roughly high C
+
     const PITCH_SECTION_HEIGHT_RATIO = 0.6;
     const AMP_SECTION_HEIGHT_RATIO = 0.4;
 
@@ -212,7 +216,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.lineTo(ctx.canvas.width, ctx.canvas.height * PITCH_SECTION_HEIGHT_RATIO);
         ctx.stroke();
         const timedData = liveHistory.map(d => ({ ...d, x: ((d.time - currentTime) / lookbehind) * ctx.canvas.width + ctx.canvas.width }));
-        drawGraph(ctx, timedData, 'x', d => pitchToY(d.pitch, ctx.canvas), '#FFFFFF', 2);
+        drawGraph(ctx, timedData, 'x', d => pitchToY(d.pitch, ctx.canvas, LIVE_PITCH_MIN, LIVE_PITCH_MAX), '#FFFFFF', 2);
         drawGraph(ctx, timedData, 'x', d => amplitudeToY(d.amplitude, ctx.canvas, true), '#FFFFFF', 1);
         drawGraph(ctx, timedData, 'x', d => amplitudeToY(d.amplitude, ctx.canvas, false), '#FFFFFF', 1);
         drawTimeMarker(ctx, ctx.canvas.width);
@@ -229,7 +233,7 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.lineTo(ctx.canvas.width, ctx.canvas.height * PITCH_SECTION_HEIGHT_RATIO);
         ctx.stroke();
         const visibleData = scoreData.filter(d => d.harmonic_index === partialIndex && d.time >= currentTime && d.time < currentTime + lookahead);
-        drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => pitchToY(d.frequency, ctx.canvas), '#FFFFFF', 2);
+        drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => pitchToY(d.frequency, ctx.canvas, pitchMin, pitchMax), '#FFFFFF', 2);
         drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => amplitudeToY(dbToLinear(d.amplitude) / scoreAmpMaxLinear, ctx.canvas, true), '#FFFFFF', 1);
         drawGraph(ctx, visibleData.map(d => ({...d, x: ((d.time - currentTime) / lookahead) * ctx.canvas.width})), 'x', d => amplitudeToY(dbToLinear(d.amplitude) / scoreAmpMaxLinear, ctx.canvas, false), '#FFFFFF', 1);
         drawTimeMarker(ctx, 0);
