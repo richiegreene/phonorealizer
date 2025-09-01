@@ -20,6 +20,7 @@ class AudioPlayer(QObject):
         self.audio_output = QAudioOutput()
         self.media_player.setAudioOutput(self.audio_output)
         self.temp_wav_file = None
+        self.last_wavetable_preset = "Basic Shapes"
         self.last_wavetable_value = 0
 
         # Connect signals here and manage connections carefully
@@ -30,15 +31,19 @@ class AudioPlayer(QObject):
         current_position = self.media_player.position()
         
         wavetable = None
+        new_wavetable_preset = "Basic Shapes"
         new_wavetable_value = 0
         if hasattr(self.parent, 'wavetable_dialog') and self.parent.wavetable_dialog is not None:
             wavetable = self.parent.wavetable_dialog.get_wavetable()
+            new_wavetable_preset = self.parent.wavetable_dialog.preset_combo.currentText()
             new_wavetable_value = self.parent.wavetable_dialog.slider.value()
 
-        wavetable_changed = new_wavetable_value != self.last_wavetable_value
+        wavetable_changed = (new_wavetable_preset != self.last_wavetable_preset or
+                             new_wavetable_value != self.last_wavetable_value)
 
         # If data is dirty or wavetable changed, always re-synthesize
         if harmonic_data.is_modified() or wavetable_changed:
+            self.last_wavetable_preset = new_wavetable_preset
             self.last_wavetable_value = new_wavetable_value
             self._start_playback(harmonic_data, play_action_widget, start_position=current_position, wavetable=wavetable)
             return
