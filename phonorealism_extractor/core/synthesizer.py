@@ -6,7 +6,7 @@ from scipy.interpolate import interp1d
 def db_to_linear(db):
     return 10 ** (db / 20)
 
-def generate_partial_waveform(time_array, freq_array, amp_array, sr, duration, playback_speed):
+def generate_partial_waveform(time_array, freq_array, amp_array, sr, duration, playback_speed, wavetable=None):
     t = np.linspace(0, duration, int(sr * duration))
     
     # Scale the time_array for interpolation to change playback speed
@@ -19,13 +19,25 @@ def generate_partial_waveform(time_array, freq_array, amp_array, sr, duration, p
     amp_t = db_to_linear(amp_interp(t))
 
     phase = 2 * np.pi * np.cumsum(freq_t) / sr
-    waveform = amp_t * np.sin(phase)
+    
+    if wavetable is None:
+        waveform = amp_t * np.sin(phase)
+    else:
+        wavetable_size = len(wavetable)
+        lookup_indices = (phase % (2 * np.pi)) * (wavetable_size / (2 * np.pi))
+        waveform = amp_t * np.interp(lookup_indices, np.arange(wavetable_size), wavetable)
 
     return waveform
 
-def synthesize_from_partials(partials, sr, output_wav_path, duration, playback_speed=1.0):
+def synthesize_from_partials(partials, sr, output_wav_path, duration, playback_speed=1.0, wavetable=None):
     if not partials:
         return
+
+    print(f"Synthesizer: Received wavetable of shape {wavetable.shape if wavetable is not None else 'None'}")
+    if wavetable is None:
+        print("Synthesizer: Wavetable is None, using sine wave.")
+    else:
+        print("Synthesizer: Using provided wavetable.")
 
     adjusted_duration = duration / playback_speed
     waveform = np.zeros(int(sr * adjusted_duration))
@@ -36,7 +48,7 @@ def synthesize_from_partials(partials, sr, output_wav_path, duration, playback_s
         time_array, freq_array, amp_array = zip(*harmonic)
         # octave transpose frequency for synthesis
         freq_array_halved = [f * 0.5 for f in freq_array]
-        partial_wave = generate_partial_waveform(time_array, freq_array_halved, amp_array, sr, adjusted_duration, playback_speed)
+        partial_wave = generate_partial_waveform(time_array, freq_array_halved, amp_array, sr, adjusted_duration, playback_speed, wavetable=wavetable)
         waveform[:len(partial_wave)] += partial_wave
 
     # Normalize and write to file

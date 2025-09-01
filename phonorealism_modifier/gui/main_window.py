@@ -22,6 +22,7 @@ from core.editor import HarmonicEditor
 from .export_dialog import ExportDialog
 from core.exporter import Exporter
 from .perform_window import PerformWindow
+from .wavetable_dialog import WavetableDialog
 from core.commands import EditCommand, DeleteCommand, InsertCommand
 
 class AnalysisOptionsDialog(QDialog):
@@ -114,6 +115,11 @@ class MainWindow(QMainWindow):
         save_action.setStatusTip("Save the current harmonic data.")
         save_action.triggered.connect(self.save_action)
         self.toolbar.addAction(save_action)
+
+        wavetable_action = QAction("Wavetable", self)
+        wavetable_action.setStatusTip("Open wavetable synthesizer settings.")
+        wavetable_action.triggered.connect(self.open_wavetable_dialog)
+        self.toolbar.addAction(wavetable_action)
 
         self.play_action = QAction("Play", self)
         self.play_action.setStatusTip("Play or pause the audio.")
@@ -403,6 +409,11 @@ class MainWindow(QMainWindow):
         self.plot.selected_points = new_selection
         self.plot.update_selection_visuals()
         self.statusBar().showMessage(f"{len(self.plot.selected_points)} points selected.", 2000)
+
+    def open_wavetable_dialog(self):
+        if not hasattr(self, 'wavetable_dialog') or self.wavetable_dialog is None:
+            self.wavetable_dialog = WavetableDialog(self)
+        self.wavetable_dialog.show()
 
     def open_perform_window(self):
         if self.perform_window is None or not self.perform_window.isVisible():

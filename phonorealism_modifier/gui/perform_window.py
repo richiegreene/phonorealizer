@@ -11,6 +11,7 @@ import traceback
 from collections import deque
 import librosa
 from .audio_io_dialog import AudioIODialog
+from .wavetable_dialog import WavetableDialog
 from phonorealism_extractor.core.synthesizer import synthesize_from_partials, db_to_linear
 
 class PerformWindow(QMainWindow):
@@ -39,6 +40,7 @@ class PerformWindow(QMainWindow):
         self.media_player.positionChanged.connect(self.update_playback_position)
         self.input_gain_factor = 1.0 # Initial input gain factor
         self.is_log_scale = False # Initial scale for frequency plots is linear
+        self.last_wavetable_name = "Sine"
 
         self._init_ui()
 
@@ -54,6 +56,10 @@ class PerformWindow(QMainWindow):
         select_partial_action = QAction("Select Partial", self)
         select_partial_action.triggered.connect(self.select_partial)
         self.toolbar.addAction(select_partial_action)
+
+        wavetable_action = QAction("Wavetable", self)
+        wavetable_action.triggered.connect(self.open_wavetable_dialog)
+        self.toolbar.addAction(wavetable_action)
 
         self.play_pause_action = QAction("Play", self)
         self.play_pause_action.setCheckable(True)
@@ -173,6 +179,11 @@ class PerformWindow(QMainWindow):
         # Link x-axes for synchronized scrolling
         self.live_amplitude_plot.setXLink(self.live_plot)
         self.csv_amplitude_plot.setXLink(self.csv_plot)
+
+    def open_wavetable_dialog(self):
+        if not hasattr(self, 'wavetable_dialog') or self.wavetable_dialog is None:
+            self.wavetable_dialog = WavetableDialog(self)
+        self.wavetable_dialog.show()
 
     def update_log_lin_button_text(self):
         if self.is_log_scale:
@@ -318,8 +329,15 @@ class PerformWindow(QMainWindow):
             self.temp_wav_file.setAutoRemove(True)
             output_path = self.temp_wav_file.fileName()
 
+            wavetable = None
+            if hasattr(self, 'wavetable_dialog') and self.wavetable_dialog is not None:
+                wavetable = self.wavetable_dialog.get_wavetable()
+                print(f"PerformWindow: Received wavetable of shape {wavetable.shape if wavetable is not None else 'None'}")
+            else:
+                print("PerformWindow: No wavetable dialog found or it is None.")
+
             try:
-                synthesize_from_partials(partials_data, sr, output_path, duration)
+                synthesize_from_partials(partials_data, sr, output_path, duration, wavetable=wavetable)
                 self.media_player.setSource(QUrl.fromLocalFile(output_path))
                 self.synthesized_rms_data = self.analyze_wav_rms(output_path, sr)
             except Exception as e:
@@ -327,12 +345,21 @@ class PerformWindow(QMainWindow):
                 traceback.print_exc()
 
     def toggle_playback(self):
+        new_wavetable_name = "Sine"
+        if hasattr(self, 'wavetable_dialog') and self.wavetable_dialog is not None:
+            new_wavetable_name = self.wavetable_dialog.waveform_combo.currentText()
+
+        wavetable_changed = new_wavetable_name != self.last_wavetable_name
+
+        if wavetable_changed:
+            self.last_wavetable_name = new_wavetable_name
+            self.synthesize_partial() # Re-synthesize
+
         if self.media_player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
             self.media_player.pause()
             self.play_pause_action.setText("Play")
             self.play_pause_action.setChecked(False)
-        elif self.media_player.playbackState() == QMediaPlayer.PlaybackState.PausedState or \
-             self.media_player.playbackState() == QMediaPlayer.PlaybackState.StoppedState:
+        else: # Paused or Stopped
             if self.media_player.source().isEmpty():
                 self.play_pause_action.setChecked(False)
                 return
