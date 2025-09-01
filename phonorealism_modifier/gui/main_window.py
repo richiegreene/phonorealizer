@@ -290,12 +290,15 @@ class MainWindow(QMainWindow):
         dialog = ExportDialog(self)
         if dialog.exec():
             settings = dialog.get_settings()
-            self.export_files(settings)
+            wavetable = None
+            if hasattr(self, 'wavetable_dialog') and self.wavetable_dialog is not None:
+                wavetable = self.wavetable_dialog.get_wavetable()
+            self.export_files(settings, wavetable)
 
-    def export_files(self, settings):
+    def export_files(self, settings, wavetable=None):
         file_path, _ = QFileDialog.getSaveFileName(self, "Save Exported Files", "", "All Files (*.*)")
         if file_path:
-            self.exporter.export(settings, file_path)
+            self.exporter.export(settings, file_path, wavetable=wavetable)
             self.data.reset_modified()
 
     def batch_edit(self):

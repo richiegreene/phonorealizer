@@ -10,12 +10,12 @@ class Exporter:
     def __init__(self, data):
         self.data = data
 
-    def export(self, settings, output_path):
+    def export(self, settings, output_path, wavetable=None):
         if settings['csv']['export']:
             self.export_csv(output_path)
 
         if settings['wav']['export']:
-            self.export_wav(settings['wav'], output_path)
+            self.export_wav(settings['wav'], output_path, wavetable=wavetable)
 
         if settings['svg_pitch']['export']:
             self.export_svg_pitch(settings['svg_pitch'], output_path)
@@ -26,16 +26,16 @@ class Exporter:
     def export_csv(self, output_path):
         self.data.export_csv(output_path + '.csv')
 
-    def export_wav(self, wav_settings, output_path):
+    def export_wav(self, wav_settings, output_path, wavetable=None):
         if wav_settings['full']:
-            self._synthesize_and_save(self.data.get_harmonics(), output_path + '.wav', halve_frequencies=True)
+            self._synthesize_and_save(self.data.get_harmonics(), output_path + '.wav', halve_frequencies=True, wavetable=wavetable)
         if wav_settings['parts']:
             output_dir = os.path.splitext(output_path)[0] + "_partials"
             os.makedirs(output_dir, exist_ok=True)
             for i, partial in enumerate(self.data.get_harmonics()):
-                self._synthesize_and_save([partial], os.path.join(output_dir, f"partial_{i+1}.wav"), halve_frequencies=True)
+                self._synthesize_and_save([partial], os.path.join(output_dir, f"partial_{i+1}.wav"), halve_frequencies=True, wavetable=wavetable)
 
-    def _synthesize_and_save(self, harmonics, output_path, sr=44100, halve_frequencies=False):
+    def _synthesize_and_save(self, harmonics, output_path, sr=44100, halve_frequencies=False, wavetable=None):
         if not harmonics:
             return
 
@@ -48,7 +48,7 @@ class Exporter:
             time_array, freq_array, amp_array = zip(*harmonic)
             if halve_frequencies:
                 freq_array = np.array(freq_array) / 2
-            partial_wave = self._generate_partial_waveform(time_array, freq_array, amp_array, sr, duration)
+            partial_wave = self._generate_partial_waveform(time_array, freq_array, amp_array, sr, duration, wavetable=wavetable)
             waveform[:len(partial_wave)] += partial_wave
 
         max_abs_amp = np.max(np.abs(waveform))
@@ -57,14 +57,20 @@ class Exporter:
         
         sf.write(output_path, waveform, sr)
 
-    def _generate_partial_waveform(self, time_array, freq_array, amp_array, sr, duration):
+    def _generate_partial_waveform(self, time_array, freq_array, amp_array, sr, duration, wavetable=None):
         t = np.linspace(0, duration, int(sr * duration))
         
         freq_interp = np.interp(t, time_array, freq_array)
         amp_interp = np.interp(t, time_array, amp_array)
 
         phase = 2 * np.pi * np.cumsum(freq_interp) / sr
-        waveform = self._db_to_linear(amp_interp) * np.sin(phase)
+        
+        if wavetable is None:
+            waveform = self._db_to_linear(amp_interp) * np.sin(phase)
+        else:
+            wavetable_size = len(wavetable)
+            lookup_indices = (phase % (2 * np.pi)) * (wavetable_size / (2 * np.pi))
+            waveform = self._db_to_linear(amp_interp) * np.interp(lookup_indices, np.arange(wavetable_size), wavetable)
 
         return waveform
 
