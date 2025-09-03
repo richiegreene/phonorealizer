@@ -7,7 +7,7 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
 
     # Set dark theme palette
-    app.setStyle("Fusion") # Fusion style is recommended for dark themes
+    app.setStyle("Fusion")
     palette = QPalette()
     palette.setColor(QPalette.Window, QColor(53, 53, 53))
     palette.setColor(QPalette.WindowText, QColor(255, 255, 255))
