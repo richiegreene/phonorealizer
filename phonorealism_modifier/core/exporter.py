@@ -5,6 +5,7 @@ import soundfile as sf
 from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom.minidom import parseString
 import librosa
+import mido
 
 class Exporter:
     def __init__(self, data):
@@ -16,6 +17,9 @@ class Exporter:
 
         if settings['wav']['export']:
             self.export_wav(settings['wav'], output_path, wavetable=wavetable)
+
+        if settings['midi']['export']:
+            self.export_midi(settings['midi'], output_path)
 
         if settings['svg_pitch']['export']:
             self.export_svg_pitch(settings['svg_pitch'], output_path)
@@ -377,6 +381,114 @@ class Exporter:
         
         path_d += f"L {bottom_path[-1][0]},{bottom_path[-1][1]} "
         for p in reversed(bottom_path[:-1]):
+            path_d += f"L {p[0]},{p[1]} "
+        path_d += "Z"
+
+        dwg.add(dwg.path(d=path_d, stroke='none', fill=svgwrite.rgb(0, 0, 0, '%')))
+
+        dwg.save()
+
+    def export_midi(self, midi_settings, output_path):
+        if midi_settings['full']:
+            self._save_midi(self.data.get_harmonics(), output_path + '.mid')
+        if midi_settings['parts']:
+            output_dir = os.path.splitext(output_path)[0] + "_midi_partials"
+            os.makedirs(output_dir, exist_ok=True)
+            for i, partial in enumerate(self.data.get_harmonics()):
+                self._save_midi([partial], os.path.join(output_dir, f"partial_{i+1}.mid"))
+
+    def _freq_to_midi(self, freq):
+        return 69 + 12 * np.log2(freq / 440.0)
+
+    def _db_to_velocity(self, db):
+        linear = 10 ** (db / 20.0)
+        return int(min(max(linear * 127, 0), 127))
+
+    def _save_midi(self, harmonics, output_path, ticks_per_beat=480):
+        mid = mido.MidiFile(ticks_per_beat=ticks_per_beat)
+        track = mido.MidiTrack()
+        mid.tracks.append(track)
+
+        events = []
+        for harmonic in harmonics:
+            if not harmonic:
+                continue
+            
+            for time, freq, amp_db in harmonic:
+                midi_note = int(round(self._freq_to_midi(freq)))
+                velocity = self._db_to_velocity(amp_db)
+                
+                if velocity > 0:
+                    note_duration_seconds = 0.05 # 50ms duration for each note
+                    events.append({'type': 'note_on', 'note': midi_note, 'velocity': velocity, 'time': time})
+                    events.append({'type': 'note_off', 'note': midi_note, 'velocity': velocity, 'time': time + note_duration_seconds})
+
+        # Sort events by time
+        events.sort(key=lambda x: x['time'])
+        
+        last_time_ticks = 0
+        for event in events:
+            try:
+                absolute_time_ticks = int(mido.second2tick(event['time'], ticks_per_beat, 500000))
+                delta_ticks = absolute_time_ticks - last_time_ticks
+                
+                # Clamp note to be within 0-127
+                note = max(0, min(127, event['note']))
+
+                track.append(mido.Message(event['type'], note=note, velocity=event['velocity'], time=delta_ticks))
+                last_time_ticks = absolute_time_ticks
+            except ValueError as e:
+                print(f"Error creating MIDI message for event: {event}")
+                print(f"Error: {e}")
+
+        mid.save(output_path)
+
+    def _save_waveform_svg(self, audio_data, output_path, sr=44100, svg_width=1000, svg_height=500, gain=1.0, max_points=5000, **kwargs):
+        import svgwrite
+        dwg = svgwrite.Drawing(output_path, profile='tiny')
+        dwg.viewbox(0, 0, svg_width, svg_height)
+
+        if len(audio_data) > max_points:
+            indices = np.linspace(0, len(audio_data) - 1, max_points, dtype=int)
+            audio_data = audio_data[indices]
+
+        num_samples = len(audio_data)
+        time_scale = svg_width / num_samples
+        
+        amps = np.abs(audio_data)
+        max_amp = np.max(amps)
+        min_amp = np.min(amps)
+
+        max_stroke_width = svg_height / 2.0
+        min_stroke_width = 0.1
+
+        scaled_stroke_widths = []
+        for amp in amps:
+            if max_amp > min_amp:
+                normalized_amp = (amp - min_amp) / (max_amp - min_amp)
+            else:
+                normalized_amp = 0
+            stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
+            scaled_stroke_widths.append(stroke_width * gain)
+
+        top_path_coords = []
+        bottom_path_coords = []
+        center_y = svg_height / 2.0
+
+        for i in range(num_samples):
+            x = i * time_scale
+            half_width = scaled_stroke_widths[i] / 2.0
+            y_top = center_y - half_width
+            y_bottom = center_y + half_width
+            top_path_coords.append((x, y_top))
+            bottom_path_coords.append((x, y_bottom))
+
+        path_d = f"M {top_path_coords[0][0]},{top_path_coords[0][1]} "
+        for p in top_path_coords[1:]:
+            path_d += f"L {p[0]},{p[1]} "
+        
+        path_d += f"L {bottom_path_coords[-1][0]},{bottom_path_coords[-1][1]} "
+        for p in reversed(bottom_path_coords[:-1]):
             path_d += f"L {p[0]},{p[1]} "
         path_d += "Z"
 

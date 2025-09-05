@@ -43,6 +43,30 @@ class ExportDialog(QDialog):
         self.wav_group.setLayout(self.wav_layout)
         self.layout.addWidget(self.wav_group)
 
+        # MIDI Export
+        self.midi_group = QGroupBox("MIDI Export")
+        self.midi_layout = QVBoxLayout()
+        self.midi_layout.setContentsMargins(10, 10, 10, 10)
+        self.midi_layout.setSpacing(5)
+        self.midi_export_checkbox = QCheckBox("Export to MIDI")
+        self.midi_export_checkbox.stateChanged.connect(self.toggle_midi_options)
+        self.midi_layout.addWidget(self.midi_export_checkbox)
+
+        self.midi_full_checkbox = QCheckBox("Full")
+        self.midi_full_checkbox.setChecked(True)
+        self.midi_parts_checkbox = QCheckBox("Parts")
+
+        midi_options_layout = QHBoxLayout()
+        midi_options_layout.setContentsMargins(0, 0, 0, 0)
+        midi_options_layout.setSpacing(10)
+        midi_options_layout.addWidget(self.midi_full_checkbox)
+        midi_options_layout.addWidget(self.midi_parts_checkbox)
+        midi_options_layout.addStretch(1)
+        self.midi_layout.addLayout(midi_options_layout)
+
+        self.midi_group.setLayout(self.midi_layout)
+        self.layout.addWidget(self.midi_group)
+
         # SVG Pitch Export
         self.svg_pitch_group = QGroupBox("SVG Pitch Export")
         self.svg_pitch_layout = QVBoxLayout()
@@ -139,6 +163,7 @@ class ExportDialog(QDialog):
 
         # Initial state setup
         self.toggle_wav_options(self.wav_export_checkbox.checkState())
+        self.toggle_midi_options(self.midi_export_checkbox.checkState())
         self.toggle_svg_pitch_options(self.svg_pitch_export_checkbox.checkState())
         self.toggle_svg_amplitude_options(self.svg_amplitude_export_checkbox.checkState())
 
@@ -146,6 +171,11 @@ class ExportDialog(QDialog):
         enabled = (state == 2) # Compare integer value
         self.wav_full_checkbox.setEnabled(enabled)
         self.wav_parts_checkbox.setEnabled(enabled)
+
+    def toggle_midi_options(self, state):
+        enabled = (state == 2)
+        self.midi_full_checkbox.setEnabled(enabled)
+        self.midi_parts_checkbox.setEnabled(enabled)
 
     def toggle_svg_pitch_options(self, state):
         enabled = (state == 2) # Compare integer value
@@ -177,6 +207,11 @@ class ExportDialog(QDialog):
                 "export": self.wav_export_checkbox.isChecked(),
                 "full": self.wav_full_checkbox.isChecked(),
                 "parts": self.wav_parts_checkbox.isChecked()
+            },
+            "midi": {
+                "export": self.midi_export_checkbox.isChecked(),
+                "full": self.midi_full_checkbox.isChecked(),
+                "parts": self.midi_parts_checkbox.isChecked()
             },
             "svg_pitch": {
                 "export": self.svg_pitch_export_checkbox.isChecked(),

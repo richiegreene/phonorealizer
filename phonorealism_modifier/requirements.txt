@@ -7,3 +7,5 @@ librosa
 soundfile
 svgwrite
 scipy
+mido
+python-rtmidi
