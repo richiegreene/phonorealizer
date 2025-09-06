@@ -398,48 +398,105 @@ class Exporter:
                 self._save_midi([partial], os.path.join(output_dir, f"partial_{i+1}.mid"))
 
     def _freq_to_midi(self, freq):
+        if freq <= 0:
+            return 0
         return 69 + 12 * np.log2(freq / 440.0)
 
     def _db_to_velocity(self, db):
         linear = 10 ** (db / 20.0)
         return int(min(max(linear * 127, 0), 127))
 
-    def _save_midi(self, harmonics, output_path, ticks_per_beat=480):
-        mid = mido.MidiFile(ticks_per_beat=ticks_per_beat)
-        track = mido.MidiTrack()
-        mid.tracks.append(track)
+    def _calculate_pitch_bend(self, current_freq, base_freq):
+        if base_freq == 0 or current_freq == 0:
+            return 0
+        
+        # Calculate the pitch difference in cents
+        cents_deviation = 1200 * np.log2(current_freq / base_freq)
+        
+        # Assuming a pitch bend range of +/- 2 semitones (200 cents)
+        # The pitch bend value is a 14-bit integer from -8192 to 8191
+        # We map the cents deviation to this range.
+        # A deviation of 200 cents maps to 8191.
+        pitch_bend_range_cents = 200
+        pitch_bend_value = int((cents_deviation / pitch_bend_range_cents) * 8191)
+        
+        return max(-8192, min(8191, pitch_bend_value))
 
-        events = []
+    def _save_midi(self, harmonics, output_path, ticks_per_beat=480, tempo=120):
+        mid = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat) # Type 1 for multiple tracks
+
         for harmonic in harmonics:
             if not harmonic:
                 continue
-            
-            for time, freq, amp_db in harmonic:
-                midi_note = int(round(self._freq_to_midi(freq)))
+
+            track = mido.MidiTrack()
+            mid.tracks.append(track)
+
+            # Set tempo only in the first track
+            if len(mid.tracks) == 1:
+                microseconds_per_beat = mido.bpm2tempo(tempo)
+                track.append(mido.MetaMessage('set_tempo', tempo=microseconds_per_beat))
+
+            last_time_ticks = 0
+            active_note = None
+            last_velocity = 0
+
+            for i, (time, freq, amp_db) in enumerate(harmonic):
                 velocity = self._db_to_velocity(amp_db)
                 
-                if velocity > 0:
-                    note_duration_seconds = 0.05 # 50ms duration for each note
-                    events.append({'type': 'note_on', 'note': midi_note, 'velocity': velocity, 'time': time})
-                    events.append({'type': 'note_off', 'note': midi_note, 'velocity': velocity, 'time': time + note_duration_seconds})
+                if velocity == 0 and active_note is not None:
+                    # Note off
+                    current_time_ticks = int(mido.second2tick(time, ticks_per_beat, mido.bpm2tempo(tempo)))
+                    delta_ticks = max(0, current_time_ticks - last_time_ticks)
+                    track.append(mido.Message('note_off', note=active_note['note'], velocity=0, time=delta_ticks))
+                    last_time_ticks = current_time_ticks
+                    active_note = None
+                    continue
 
-        # Sort events by time
-        events.sort(key=lambda x: x['time'])
-        
-        last_time_ticks = 0
-        for event in events:
-            try:
-                absolute_time_ticks = int(mido.second2tick(event['time'], ticks_per_beat, 500000))
-                delta_ticks = absolute_time_ticks - last_time_ticks
-                
-                # Clamp note to be within 0-127
-                note = max(0, min(127, event['note']))
+                if velocity > 0 and active_note is None:
+                    # Note on
+                    base_freq = freq
+                    midi_note = max(0, min(127, int(round(self._freq_to_midi(base_freq))) - 12))
+                    active_note = {'note': midi_note, 'base_freq': base_freq}
+                    
+                    current_time_ticks = int(mido.second2tick(time, ticks_per_beat, mido.bpm2tempo(tempo)))
+                    delta_ticks = max(0, current_time_ticks - last_time_ticks)
+                    track.append(mido.Message('note_on', note=midi_note, velocity=velocity, time=delta_ticks))
+                    last_time_ticks = current_time_ticks
+                    last_velocity = velocity
 
-                track.append(mido.Message(event['type'], note=note, velocity=event['velocity'], time=delta_ticks))
-                last_time_ticks = absolute_time_ticks
-            except ValueError as e:
-                print(f"Error creating MIDI message for event: {event}")
-                print(f"Error: {e}")
+                if active_note is not None:
+                    # Pitch bend or new note
+                    cents_deviation = 1200 * np.log2(freq / active_note['base_freq']) if active_note['base_freq'] > 0 and freq > 0 else 0
+                    
+                    if abs(cents_deviation) > 100: # More than 100 cents deviation
+                        # End previous note
+                        current_time_ticks = int(mido.second2tick(time, ticks_per_beat, mido.bpm2tempo(tempo)))
+                        delta_ticks = max(0, current_time_ticks - last_time_ticks)
+                        track.append(mido.Message('note_off', note=active_note['note'], velocity=0, time=delta_ticks))
+                        last_time_ticks = current_time_ticks
+
+                        # Start a new note
+                        base_freq = freq
+                        midi_note = max(0, min(127, int(round(self._freq_to_midi(base_freq))) - 12))
+                        active_note = {'note': midi_note, 'base_freq': base_freq}
+                        track.append(mido.Message('note_on', note=midi_note, velocity=velocity, time=0))
+                        last_velocity = velocity
+                    else:
+                        # Pitch bend
+                        pitch_bend = self._calculate_pitch_bend(freq, active_note['base_freq'])
+                        current_time_ticks = int(mido.second2tick(time, ticks_per_beat, mido.bpm2tempo(tempo)))
+                        delta_ticks = max(0, current_time_ticks - last_time_ticks)
+                        track.append(mido.Message('pitchwheel', pitch=pitch_bend, time=delta_ticks))
+                        last_time_ticks = current_time_ticks
+
+            if active_note is not None:
+                # Turn off the last note at the end of the harmonic
+                time = harmonic[-1][0]
+                current_time_ticks = int(mido.second2tick(time, ticks_per_beat, mido.bpm2tempo(tempo)))
+                delta_ticks = max(0, current_time_ticks - last_time_ticks)
+                track.append(mido.Message('note_off', note=active_note['note'], velocity=0, time=delta_ticks))
+                last_time_ticks = current_time_ticks
 
         mid.save(output_path)
 
@@ -541,7 +598,7 @@ class Exporter:
             path_d += f"L {p[0]},{p[1]} "
         
         path_d += f"L {bottom_path_coords[-1][0]},{bottom_path_coords[-1][1]} "
-        for p in reversed(bottom_path_coords[:-1]):
+        for p in reversed(bottom_path[:-1]):
             path_d += f"L {p[0]},{p[1]} "
         path_d += "Z"
 
