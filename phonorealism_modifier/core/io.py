@@ -3,6 +3,7 @@ import pandas as pd
 class HarmonicData:
     def __init__(self):
         self.df = None
+        self.original_df = None  # To store the pristine, unmodified data
         self.grouped = None
         self._modified = False
 
@@ -14,6 +15,7 @@ class HarmonicData:
 
     def load_csv(self, filepath):
         self.df = pd.read_csv(filepath)
+        self.original_df = self.df.copy()  # Keep a copy of the original data
         required_cols = {'time', 'harmonic_index', 'frequency', 'amplitude'}
         if not required_cols.issubset(self.df.columns):
             raise ValueError(f"CSV missing required columns: {required_cols - set(self.df.columns)}")
@@ -26,6 +28,7 @@ class HarmonicData:
         Assumes the DataFrame has the required columns: 'time', 'harmonic_index', 'frequency', 'amplitude'.
         """
         self.df = dataframe
+        self.original_df = self.df.copy() # Keep a copy of the original data
         required_cols = {'time', 'harmonic_index', 'frequency', 'amplitude'}
         if not required_cols.issubset(self.df.columns):
             raise ValueError(f"DataFrame missing required columns: {required_cols - set(self.df.columns)}")

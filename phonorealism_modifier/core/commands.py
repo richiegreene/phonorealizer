@@ -1,6 +1,38 @@
 from PySide6.QtGui import QUndoCommand
 import pandas as pd
 
+class CompensationCommand(QUndoCommand):
+    def __init__(self, data_model, harmonic_editor, waveform_harmonics, amount, description, parent=None):
+        super().__init__(description, parent)
+        self.data_model = data_model
+        self.harmonic_editor = harmonic_editor
+        self.waveform_harmonics = waveform_harmonics
+        self.amount = amount
+        self.original_df_copy = self.data_model.df.copy()
+
+    def redo(self):
+        self.harmonic_editor.apply_timbre_compensation(self.waveform_harmonics, self.amount)
+
+    def undo(self):
+        self.data_model.df = self.original_df_copy
+        self.data_model.grouped = {idx: group.sort_values('time') for idx, group in self.data_model.df.groupby('harmonic_index')}
+        self.data_model._modified = True
+
+class RevertCommand(QUndoCommand):
+    def __init__(self, data_model, harmonic_editor, description, parent=None):
+        super().__init__(description, parent)
+        self.data_model = data_model
+        self.harmonic_editor = harmonic_editor
+        self.original_df_copy = self.data_model.df.copy()
+
+    def redo(self):
+        self.harmonic_editor.revert_to_original()
+
+    def undo(self):
+        self.data_model.df = self.original_df_copy
+        self.data_model.grouped = {idx: group.sort_values('time') for idx, group in self.data_model.df.groupby('harmonic_index')}
+        self.data_model._modified = True
+
 class EditCommand(QUndoCommand):
     def __init__(self, data_model, harmonic_editor, selected_points, edits, description, parent=None):
         super().__init__(description, parent)

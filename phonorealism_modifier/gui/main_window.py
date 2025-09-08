@@ -23,7 +23,8 @@ from .export_dialog import ExportDialog
 from core.exporter import Exporter
 from .perform_window import PerformWindow
 from .wavetable_dialog import WavetableDialog
-from core.commands import EditCommand, DeleteCommand, InsertCommand
+from core.commands import EditCommand, DeleteCommand, InsertCommand, CompensationCommand, RevertCommand
+from core.timbre import get_harmonic_profile
 
 class AnalysisOptionsDialog(QDialog):
     def __init__(self, parent=None):

@@ -1,7 +1,13 @@
 import numpy as np
 import pyqtgraph as pg
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QSlider, QWidget, QComboBox
+from PySide6.QtWidgets import (
+    QDialog, QVBoxLayout, QSlider, QWidget, QComboBox, QPushButton, QHBoxLayout, QMessageBox, QApplication, QLabel
+)
 from PySide6.QtCore import Qt
+
+# Assuming these are in the correct path relative to the execution context
+from core.commands import CompensationCommand, RevertCommand
+from core.timbre import get_harmonic_profile
 
 def generate_harmonic_wave(amplitudes, wavetable_size=512):
     """Generates a wave from a list of harmonic amplitudes."""
@@ -20,8 +26,9 @@ def generate_harmonic_wave(amplitudes, wavetable_size=512):
 class WavetableDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.main_window = parent
         self.setWindowTitle("Wavetable Synthesizer")
-        self.setMinimumSize(400, 300)
+        self.setMinimumSize(400, 350) # Increased size for new buttons
 
         self.layout = QVBoxLayout(self)
 
@@ -42,6 +49,24 @@ class WavetableDialog(QDialog):
         self.waveform_plot = self.plot_widget.plot(pen=pg.mkPen('w', width=2))
         self.layout.addWidget(self.plot_widget)
 
+        # --- Compensation Amount Slider ---
+        amount_layout = QHBoxLayout()
+        self.amount_label = QLabel("Compensation Amount: 100%")
+        self.amount_slider = QSlider(Qt.Horizontal)
+        self.amount_slider.setRange(0, 100)
+        self.amount_slider.setValue(100)
+        amount_layout.addWidget(self.amount_label)
+        amount_layout.addWidget(self.amount_slider)
+        self.layout.addLayout(amount_layout)
+
+        # --- Action Buttons ---
+        button_layout = QHBoxLayout()
+        self.compensate_button = QPushButton("Apply Timbre Compensation")
+        self.revert_button = QPushButton("Revert to Original")
+        button_layout.addWidget(self.compensate_button)
+        button_layout.addWidget(self.revert_button)
+        self.layout.addLayout(button_layout)
+
         # --- Generate Base Waveforms ---
         self.wavetable_size = 512
         self._generate_base_wavetables()
@@ -49,6 +74,9 @@ class WavetableDialog(QDialog):
         # --- Connections ---
         self.preset_combo.currentTextChanged.connect(self.update_ui)
         self.slider.valueChanged.connect(self.update_waveform)
+        self.amount_slider.valueChanged.connect(lambda v: self.amount_label.setText(f"Compensation Amount: {v}%"))
+        self.compensate_button.clicked.connect(self.apply_timbre_compensation)
+        self.revert_button.clicked.connect(self.revert_to_original)
 
         # --- Initial State ---
         self.wavetable = None
@@ -125,3 +153,43 @@ class WavetableDialog(QDialog):
     def get_wavetable(self):
         """Returns the current wavetable."""
         return self.wavetable
+
+    def apply_timbre_compensation(self):
+        if self.main_window.data.original_df is None or self.main_window.data.original_df.empty:
+            QMessageBox.warning(self, "No Data", "Please load a file before applying compensation.")
+            return
+
+        wavetable = self.get_wavetable()
+        if wavetable is None or len(wavetable) == 0:
+            QMessageBox.warning(self, "No Wavetable", "No waveform is active in the wavetable dialog.")
+            return
+
+        try:
+            QApplication.setOverrideCursor(Qt.WaitCursor)
+            harmonic_profile = get_harmonic_profile(wavetable)
+            amount = self.amount_slider.value() / 100.0
+            
+            command = CompensationCommand(
+                self.main_window.data, 
+                self.main_window.harmonic_editor, 
+                harmonic_profile, 
+                amount, 
+                "Apply Timbre Compensation"
+            )
+            self.main_window.undo_stack.push(command)
+            self.main_window.statusBar().showMessage("Timbre compensation applied.", 2000)
+            self.main_window.plot.plot_harmonics(self.main_window.data) # Refresh plot
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Failed to apply compensation: {e}")
+        finally:
+            QApplication.restoreOverrideCursor()
+
+    def revert_to_original(self):
+        if self.main_window.data.original_df is None or self.main_window.data.original_df.empty:
+            QMessageBox.warning(self, "No Data", "No original data to revert to.")
+            return
+        
+        command = RevertCommand(self.main_window.data, self.main_window.harmonic_editor, "Revert to Original")
+        self.main_window.undo_stack.push(command)
+        self.main_window.statusBar().showMessage("Data reverted to original state.", 2000)
