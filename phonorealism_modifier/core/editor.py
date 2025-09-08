@@ -25,7 +25,7 @@ class HarmonicEditor:
             return
 
         selected_indices = self.get_indices_from_points(selected_points)
-        trace = True # Always trace for now
+        trace = False
 
         if trace:
             print("\n--- Batch Edit Trace Report ---")
@@ -33,21 +33,30 @@ class HarmonicEditor:
 
         temp_df = self.data.df.loc[selected_indices].copy()
 
-        # --- Superimpose: Calculate image-based amplitudes first ---
+        # --- Superimpose: Calculate image-based transformations ---
         image_path = edits.get('superimpose_image_path')
-        image_amps = pd.Series(np.nan, index=selected_indices)
         if image_path:
             try:
+                # Get options from edits dict
+                apply_amp = edits.get('superimpose_amplitude', False)
+                apply_pitch = edits.get('superimpose_pitch', False)
                 min_db = float(edits.get('superimpose_min_db', -80.0))
                 max_db = float(edits.get('superimpose_max_db', 0.0))
+                min_cents = float(edits.get('superimpose_min_cents', -100.0))
+                max_cents = float(edits.get('superimpose_max_cents', 100.0))
                 invert = edits.get('superimpose_invert', False)
                 mix = float(edits.get('superimpose_mix', '100').strip() or 100) / 100.0
                 y_axis_mode = edits.get("y_axis_mode", "Linear")
+
                 image = QImage(image_path)
-                if not image.isNull():
+                if not image.isNull() and (apply_amp or apply_pitch):
+                    image_amps = pd.Series(np.nan, index=selected_indices)
+                    image_cents = pd.Series(np.nan, index=selected_indices)
+
                     min_time, max_time = temp_df['time'].min(), temp_df['time'].max()
                     min_freq, max_freq = temp_df['frequency'].min(), temp_df['frequency'].max()
                     time_range = max_time - min_time if max_time > min_time else 1
+                    
                     is_log_scale = (y_axis_mode != "Linear")
                     if is_log_scale:
                         min_freq_log = np.log2(min_freq) if min_freq > 0 else 0
@@ -55,6 +64,7 @@ class HarmonicEditor:
                         freq_range_log = max_freq_log - min_freq_log if max_freq_log > min_freq_log else 1
                     else:
                         freq_range = max_freq - min_freq if max_freq > min_freq else 1
+
                     for idx, partial in temp_df.iterrows():
                         norm_time = (partial['time'] - min_time) / time_range
                         if is_log_scale:
@@ -62,14 +72,29 @@ class HarmonicEditor:
                             norm_freq = (partial_freq_log - min_freq_log) / freq_range_log if freq_range_log != 0 else 0
                         else:
                             norm_freq = (partial['frequency'] - min_freq) / freq_range
+                        
                         img_x = int(norm_time * (image.width() - 1))
                         img_y = int((1 - norm_freq) * (image.height() - 1))
                         brightness = image.pixelColor(img_x, img_y).lightnessF()
+                        
                         if invert:
                             brightness = 1.0 - brightness
-                        image_amps[idx] = min_db + (brightness * (max_db - min_db))
-                    temp_df['amplitude'] = (temp_df['amplitude'] * (1 - mix)) + (image_amps * mix)
-                    if trace: print(f"- Applied Superimpose with mix: {mix*100:.0f}%")
+                        
+                        if apply_amp:
+                            image_amps[idx] = min_db + (brightness * (max_db - min_db))
+                        if apply_pitch:
+                            image_cents[idx] = min_cents + (brightness * (max_cents - min_cents))
+
+                    # Apply transformations with mix
+                    if apply_amp:
+                        temp_df['amplitude'] = (temp_df['amplitude'] * (1 - mix)) + (image_amps * mix)
+                        if trace: print(f"- Applied Superimpose (Amplitude) with mix: {mix*100:.0f}%")
+                    
+                    if apply_pitch:
+                        pitch_multiplier = 2 ** (image_cents / 1200.0)
+                        temp_df['frequency'] = temp_df['frequency'] * (1 - mix) + (temp_df['frequency'] * pitch_multiplier * mix)
+                        if trace: print(f"- Applied Superimpose (Pitch) with mix: {mix*100:.0f}%")
+
             except Exception as e:
                 print(f"Error processing superimpose image: {e}")
 

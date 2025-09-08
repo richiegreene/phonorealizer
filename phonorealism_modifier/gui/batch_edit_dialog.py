@@ -55,12 +55,30 @@ class BatchEditDialog(QDialog):
         img_layout.addWidget(browse_btn)
         layout.addRow(img_layout)
 
+        # Amplitude and Pitch selection
+        self.inputs['superimpose_amplitude'] = QCheckBox("amplitude")
+        self.inputs['superimpose_amplitude'].setChecked(True)
+        self.inputs['superimpose_pitch'] = QCheckBox("pitch")
+        check_layout = QHBoxLayout()
+        check_layout.addWidget(self.inputs['superimpose_amplitude'])
+        check_layout.addWidget(self.inputs['superimpose_pitch'])
+        layout.addRow(check_layout)
+
+        # Min/Max dB
         self.inputs['superimpose_min_db'] = QLineEdit("-80.0")
         layout.addRow("Min dB", self.inputs['superimpose_min_db'])
         self.inputs['superimpose_max_db'] = QLineEdit("0.0")
         layout.addRow("Max dB", self.inputs['superimpose_max_db'])
+
+        # Min/Max Cents
+        self.inputs['superimpose_min_cents'] = QLineEdit("-100")
+        layout.addRow("Min cents", self.inputs['superimpose_min_cents'])
+        self.inputs['superimpose_max_cents'] = QLineEdit("100")
+        layout.addRow("Max cents", self.inputs['superimpose_max_cents'])
+
+        # Invert and Mix
         self.inputs['superimpose_invert'] = QCheckBox()
-        layout.addRow("Invert Mapping (Dark = Loud)", self.inputs['superimpose_invert'])
+        layout.addRow("Invert Mapping", self.inputs['superimpose_invert'])
         self.inputs['superimpose_mix'] = QLineEdit("100")
         layout.addRow("Mix Amount %", self.inputs['superimpose_mix'])
 
