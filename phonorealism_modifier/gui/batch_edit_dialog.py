@@ -2,12 +2,16 @@ from fractions import Fraction
 import numpy as np
 from PySide6.QtWidgets import (
     QDialog, QFormLayout, QLineEdit, QPushButton, QHBoxLayout, QCheckBox, 
-    QSpinBox, QVBoxLayout, QGroupBox, QScrollArea, QWidget
+    QSpinBox, QVBoxLayout, QGroupBox, QScrollArea, QWidget, QMessageBox
 )
+
+from .superimpose_dialog import SuperimposeDialog
+from core.commands import SuperimposeCommand
 
 class BatchEditDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.main_window = parent # Store a reference to the main window
         self.setWindowTitle("Selected")
         
         # Main dialog layout
@@ -171,6 +175,11 @@ class BatchEditDialog(QDialog):
         # Add scroll area to the main dialog layout
         dialog_layout.addWidget(scroll_area)
 
+        # Superimpose Button
+        self.superimpose_btn = QPushButton("Superimpose Image...")
+        self.superimpose_btn.clicked.connect(self.open_superimpose_dialog)
+        dialog_layout.addWidget(self.superimpose_btn)
+
         # OK/Cancel Buttons
         btn_layout = QHBoxLayout()
         ok_btn = QPushButton("OK")
@@ -201,6 +210,29 @@ class BatchEditDialog(QDialog):
         self.inputs['slope_cents'].setEnabled(checked and is_fixed)
         self.inputs['x_rate'].setEnabled(checked and is_variable)
         self.inputs['y_rate'].setEnabled(checked and is_variable)
+
+    def open_superimpose_dialog(self):
+        if not self.main_window.plot.selected_points:
+            QMessageBox.warning(self, "No Selection", "Please select points on the plot before superimposing.")
+            return
+
+        dialog = SuperimposeDialog(self)
+        if dialog.exec():
+            options = dialog.get_options()
+            if options:
+                # Get the y-axis mode from the plot to pass to the editor
+                options["y_axis_mode"] = self.main_window.plot.y_axis_mode
+                command = SuperimposeCommand(
+                    self.main_window.data,
+                    self.main_window.harmonic_editor,
+                    self.main_window.plot.selected_points,
+                    options,
+                    "Superimpose Image"
+                )
+                self.main_window.undo_stack.push(command)
+                self.accept() # Close the batch edit dialog
+            else:
+                QMessageBox.warning(self, "Error", "Invalid options or no image selected.")
 
     def get_data(self):
         data = {}

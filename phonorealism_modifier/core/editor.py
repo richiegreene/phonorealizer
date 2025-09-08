@@ -1,6 +1,7 @@
 from fractions import Fraction
 import numpy as np
 import pandas as pd
+from PySide6.QtGui import QImage
 
 # --- Amplitude Conversion Helpers ---
 def db_to_linear(db):
@@ -176,5 +177,64 @@ class HarmonicEditor:
         # Full batch edit logic is complex and omitted for brevity in this replacement.
         # This is a placeholder to ensure the file is syntactically correct.
         print("Apply batch edits called.")
+        self.data._modified = True
+        self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
+
+    def apply_superimpose(self, selected_points, options):
+        if not selected_points:
+            return
+
+        image_path = options["image_path"]
+        min_db = options["min_db"]
+        max_db = options["max_db"]
+        invert = options["invert"]
+        mix_amount = options["mix_amount"]
+        y_axis_mode = options.get("y_axis_mode", "Linear")
+
+        image = QImage(image_path)
+        if image.isNull():
+            print(f"Error: Could not load image at {image_path}")
+            return
+
+        selected_indices = self.get_indices_from_points(selected_points)
+        selection_df = self.data.df.loc[selected_indices].copy()
+
+        min_time, max_time = selection_df['time'].min(), selection_df['time'].max()
+        min_freq, max_freq = selection_df['frequency'].min(), selection_df['frequency'].max()
+
+        time_range = max_time - min_time if max_time > min_time else 1
+
+        is_log_scale = (y_axis_mode != "Linear")
+        if is_log_scale:
+            min_freq_log = np.log2(min_freq) if min_freq > 0 else 0
+            max_freq_log = np.log2(max_freq) if max_freq > 0 else 0
+            freq_range_log = max_freq_log - min_freq_log if max_freq_log > min_freq_log else 1
+        else:
+            freq_range = max_freq - min_freq if max_freq > min_freq else 1
+
+        for idx, partial in selection_df.iterrows():
+            norm_time = (partial['time'] - min_time) / time_range
+
+            if is_log_scale:
+                partial_freq_log = np.log2(partial['frequency']) if partial['frequency'] > 0 else 0
+                norm_freq = (partial_freq_log - min_freq_log) / freq_range_log if freq_range_log != 0 else 0
+            else:
+                norm_freq = (partial['frequency'] - min_freq) / freq_range
+
+            img_x = int(norm_time * (image.width() - 1))
+            img_y = int((1 - norm_freq) * (image.height() - 1))
+
+            pixel_color = image.pixelColor(img_x, img_y)
+            brightness = pixel_color.lightnessF()
+
+            if invert:
+                brightness = 1.0 - brightness
+
+            new_db_amp = min_db + (brightness * (max_db - min_db))
+            original_db_amp = partial['amplitude']
+            mixed_db_amp = (original_db_amp * (1 - mix_amount)) + (new_db_amp * mix_amount)
+
+            self.data.df.loc[idx, 'amplitude'] = mixed_db_amp
+
         self.data._modified = True
         self.data.grouped = {idx: group.sort_values('time') for idx, group in self.data.df.groupby('harmonic_index')}
