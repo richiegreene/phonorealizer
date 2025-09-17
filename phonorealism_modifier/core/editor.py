@@ -2,6 +2,7 @@ from fractions import Fraction
 import numpy as np
 import pandas as pd
 from PySide6.QtGui import QImage
+from scipy.signal import convolve2d
 
 def db_to_linear(db):
     return 10 ** (db / 20.0)
@@ -32,6 +33,76 @@ class HarmonicEditor:
             print(f"Processing {len(selected_indices)} selected partials.")
 
         temp_df = self.data.df.loc[selected_indices].copy()
+
+        # --- Soften/Sharpen --- 
+        kernel = edits.get('soften_sharpen_kernel')
+        if kernel is not None:
+            apply_amp = edits.get('soften_sharpen_loudness', False)
+            apply_pitch = edits.get('soften_sharpen_pitch', False)
+
+            if apply_amp or apply_pitch:
+                try:
+                    # 1. Render Spectrograms
+                    spec_width, spec_height = 512, 256
+                    amp_spectrogram = np.zeros((spec_height, spec_width))
+                    pitch_spectrogram = np.zeros((spec_height, spec_width))
+
+                    min_time, max_time = temp_df['time'].min(), temp_df['time'].max()
+                    min_freq, max_freq = temp_df['frequency'].min(), temp_df['frequency'].max()
+                    time_range = max_time - min_time if max_time > min_time else 1
+                    freq_range = max_freq - min_freq if max_freq > min_freq else 1
+
+                    use_cents = edits.get('soften_sharpen_cents', False)
+                    ref_freq = 20.0 # Reference frequency for cents calculation
+
+                    def to_cents(f, ref): return 1200 * np.log2(f / ref) if f > 0 else 0
+                    def to_hz(c, ref): return ref * (2**(c / 1200.0))
+
+                    coords = {}
+                    for idx, partial in temp_df.iterrows():
+                        norm_time = (partial['time'] - min_time) / time_range
+                        norm_freq = (partial['frequency'] - min_freq) / freq_range
+                        x = int(norm_time * (spec_width - 1))
+                        y = int((1 - norm_freq) * (spec_height - 1))
+                        coords[idx] = (x, y)
+                        if apply_amp:
+                            amp_spectrogram[y, x] += db_to_linear(partial['amplitude'])
+                        if apply_pitch:
+                            if use_cents:
+                                pitch_spectrogram[y, x] = to_cents(partial['frequency'], ref_freq)
+                            else:
+                                pitch_spectrogram[y, x] = partial['frequency']
+
+                    # 2. Apply Convolution
+                    if apply_amp:
+                        convolved_amp_spectrogram = convolve2d(amp_spectrogram, kernel, mode='same', boundary='symm')
+                    if apply_pitch:
+                        convolved_pitch_spectrogram = convolve2d(pitch_spectrogram, kernel, mode='same', boundary='symm')
+
+                    # 3. Update Partials
+                    new_amplitudes = []
+                    new_frequencies = []
+                    for idx, partial in temp_df.iterrows():
+                        x, y = coords[idx]
+                        if apply_amp:
+                            new_linear_amp = convolved_amp_spectrogram[y, x]
+                            new_amplitudes.append(linear_to_db(new_linear_amp))
+                        if apply_pitch:
+                            new_pitch_val = convolved_pitch_spectrogram[y, x]
+                            if use_cents:
+                                new_frequencies.append(to_hz(new_pitch_val, ref_freq))
+                            else:
+                                new_frequencies.append(new_pitch_val)
+
+                    if apply_amp:
+                        temp_df['amplitude'] = new_amplitudes
+                        if trace: print(f"- Applied Soften/Sharpen (Loudness)")
+                    if apply_pitch:
+                        temp_df['frequency'] = new_frequencies
+                        if trace: print(f"- Applied Soften/Sharpen (Pitch)")
+
+                except Exception as e:
+                    print(f"Error during Soften/Sharpen: {e}")
 
         # --- Superimpose: Calculate image-based transformations ---
         image_path = edits.get('superimpose_image_path')
@@ -97,6 +168,7 @@ class HarmonicEditor:
 
             except Exception as e:
                 print(f"Error processing superimpose image: {e}")
+
 
         # --- Slope Calculation ---
         apply_slope = edits.get('apply_slope', False)

@@ -7,12 +7,15 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt
 
+from gui.kernel_editor_dialog import KernelEditorDialog
+
 class BatchEditDialog(QDialog):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.main_window = parent
         self.setWindowTitle("Selected")
         self.image_path = None
+        self.kernel = None
         
         dialog_layout = QVBoxLayout(self)
         scroll_area = QScrollArea(self)
@@ -28,7 +31,8 @@ class BatchEditDialog(QDialog):
         self.add_smoothing_group(main_layout)
         self.add_sliding_group(main_layout)
         self.add_snapping_group(main_layout, placeholder_style)
-        self.add_superimpose_group(main_layout) # Add new group
+        self.add_soften_sharpen_group(main_layout)
+        self.add_superimpose_group(main_layout)
         self.add_slope_group(main_layout)
         
         scroll_area.setWidget(container)
@@ -43,6 +47,59 @@ class BatchEditDialog(QDialog):
         btn_layout.addWidget(cancel_btn)
         dialog_layout.addLayout(btn_layout)
 
+    def add_soften_sharpen_group(self, parent_layout):
+        group = QGroupBox("Soften/Sharpen")
+        layout = QFormLayout()
+
+        define_kernel_btn = QPushButton("Define Kernel")
+        define_kernel_btn.clicked.connect(self.open_kernel_editor)
+        layout.addRow(define_kernel_btn)
+
+        self.inputs['soften_sharpen_loudness'] = QCheckBox("loudness")
+        self.inputs['soften_sharpen_loudness'].setChecked(True)
+        self.inputs['soften_sharpen_pitch'] = QCheckBox("pitch")
+        
+        main_check_layout = QHBoxLayout()
+        main_check_layout.addWidget(self.inputs['soften_sharpen_loudness'])
+        main_check_layout.addWidget(self.inputs['soften_sharpen_pitch'])
+        
+        # Use a container widget for the pitch options to easily show/hide
+        pitch_options_container = QWidget()
+        pitch_options_layout = QHBoxLayout(pitch_options_container)
+        pitch_options_layout.setContentsMargins(0, 0, 0, 0) # Remove extra margins
+        self.inputs['soften_sharpen_hz'] = QCheckBox("Hz")
+        self.inputs['soften_sharpen_cents'] = QCheckBox("cents")
+        pitch_options_layout.addWidget(self.inputs['soften_sharpen_hz'])
+        pitch_options_layout.addWidget(self.inputs['soften_sharpen_cents'])
+        
+        main_check_layout.addWidget(pitch_options_container)
+        
+        layout.addRow(main_check_layout)
+
+        # --- Connections ---
+        self.inputs['soften_sharpen_pitch'].toggled.connect(pitch_options_container.setVisible)
+        
+        # Mutually exclusive Hz/Cents
+        self.inputs['soften_sharpen_hz'].toggled.connect(
+            lambda checked: self.inputs['soften_sharpen_cents'].setChecked(not checked) if checked else None
+        )
+        self.inputs['soften_sharpen_cents'].toggled.connect(
+            lambda checked: self.inputs['soften_sharpen_hz'].setChecked(not checked) if checked else None
+        )
+
+        group.setLayout(layout)
+        parent_layout.addWidget(group)
+        
+        # --- Initial state ---
+        pitch_options_container.setVisible(False)
+        self.inputs['soften_sharpen_hz'].setChecked(True)
+
+    def open_kernel_editor(self):
+        kernel = KernelEditorDialog.get_kernel_from_user(self)
+        if kernel is not None:
+            self.kernel = kernel
+            QMessageBox.information(self, "Kernel Defined", f"Kernel of size {kernel.shape[0]}x{kernel.shape[1]} has been set.")
+
     def add_superimpose_group(self, parent_layout):
         group = QGroupBox("Superimpose")
         layout = QFormLayout()
@@ -56,7 +113,7 @@ class BatchEditDialog(QDialog):
         layout.addRow(img_layout)
 
         # Amplitude and Pitch selection
-        self.inputs['superimpose_amplitude'] = QCheckBox("amplitude")
+        self.inputs['superimpose_amplitude'] = QCheckBox("loudness")
         self.inputs['superimpose_amplitude'].setChecked(True)
         self.inputs['superimpose_pitch'] = QCheckBox("pitch")
         check_layout = QHBoxLayout()
@@ -101,10 +158,12 @@ class BatchEditDialog(QDialog):
             elif isinstance(widget, QSpinBox):
                 data[key] = widget.value()
         
-        # Add image path if selected
         if self.image_path:
             data['superimpose_image_path'] = self.image_path
             data["y_axis_mode"] = self.main_window.plot.y_axis_mode
+        
+        if self.kernel is not None:
+            data['soften_sharpen_kernel'] = self.kernel
 
         return data
 
