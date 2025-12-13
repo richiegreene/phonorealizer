@@ -1,6 +1,6 @@
 # Phonorealizer
 
-Inspired by Peter Ablinger's [_Phonorealism The Reproduction of "Phonographs" by Instruments_](https://ablinger.mur.at/phonorealism.html), this is a collection of analysis, composition, and performance tools aided to asist in spectral phonorealism (including hyperrealism, pseudorealism, surrealism, etc). 
+Inspired by Peter Ablinger's [_Phonorealism The Reproduction of "Phonographs" by Instruments_](https://ablinger.mur.at/phonorealism.html), this is a collection of analysis, composition, and performance tools to asist in spectral phonorealism (including hyperrealism, pseudorealism, surrealism, etc).
 
 ## Modifier
 
