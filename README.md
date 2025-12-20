@@ -4,7 +4,7 @@ Inspired by Peter Ablinger's [_Phonorealism The Reproduction of "Phonographs" by
 
 ## Modifier
 
-The modifier area of these tools are designed to resembling Michael Klingbeil’s _Sinusoidal Partial Editing Analysis and Resynthesis [SPEAR](https://www.klingbeil.com/spear/)_. It contains all transormation procedures there and adds them to allow the composer to more intuitively modify the rendered spectrum.
+The modifier area of this tool box is designed to resembling and expand on Michael Klingbeil’s _Sinusoidal Partial Editing Analysis and Resynthesis [SPEAR](https://www.klingbeil.com/spear/)_. It contains all transormation procedures there and adds them to allow the composer to more intuitively modify the rendered spectrum.
 
 <table>
   <tr>
@@ -41,7 +41,7 @@ The modifier area of these tools are designed to resembling Michael Klingbeil’
 
 ## Performer
 
-These contain in progress tools to allow a performer feedback and video scrolling notation. Designed for phone interfaces on a given browser, UX differs _Performers_ and _Conductor_, where the conductor is responsible for starting the playback or all players parts simultaenously.
+This area of the toolbox is an in progress process to allow performer's with realtime feedback and video scrolling notation. Designed for phone interfaces on a given browser, the readout differs _Performers_ and _Conductor_, where a "conductor" is responsible for starting the playback for all players parts simultaenously.
 <table>
   <tr>
     <td width="100%">
