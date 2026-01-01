@@ -4,7 +4,7 @@ Inspired by Peter Ablinger's [_Phonorealism The Reproduction of "Phonographs" by
 
 ## Modifier
 
-The modifier area of this tool box is designed to expand off of Michael Klingbeil’s _Sinusoidal Partial Editing Analysis and Resynthesis [SPEAR](https://www.klingbeil.com/spear/)_. It contains all transormation procedures there and adds them to allow the composer to more intuitively modify the rendered spectrum.
+The modifier area of this tool box is designed to expand off of Michael Klingbeil’s _Sinusoidal Partial Editing Analysis and Resynthesis [SPEAR](https://www.klingbeil.com/spear/)_. It contains all transormation procedures there and adds to them to allow the composer to more intuitively modify the rendered spectrum.
 
 <table>
   <tr>
