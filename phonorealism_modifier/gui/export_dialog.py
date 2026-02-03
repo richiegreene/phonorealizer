@@ -64,6 +64,10 @@ class ExportDialog(QDialog):
         midi_options_layout.addStretch(1)
         self.midi_layout.addLayout(midi_options_layout)
 
+        self.midi_compile_checkbox = QCheckBox("Compile (single MPE track)")
+        self.midi_compile_checkbox.stateChanged.connect(self.toggle_midi_options)
+        self.midi_layout.addWidget(self.midi_compile_checkbox)
+
         self.midi_group.setLayout(self.midi_layout)
         self.layout.addWidget(self.midi_group)
 
@@ -176,6 +180,7 @@ class ExportDialog(QDialog):
         enabled = (state == 2)
         self.midi_full_checkbox.setEnabled(enabled)
         self.midi_parts_checkbox.setEnabled(enabled)
+        self.midi_compile_checkbox.setEnabled(enabled)
 
     def toggle_svg_pitch_options(self, state):
         enabled = (state == 2) # Compare integer value
@@ -211,7 +216,8 @@ class ExportDialog(QDialog):
             "midi": {
                 "export": self.midi_export_checkbox.isChecked(),
                 "full": self.midi_full_checkbox.isChecked(),
-                "parts": self.midi_parts_checkbox.isChecked()
+                "parts": self.midi_parts_checkbox.isChecked(),
+                "compile": self.midi_compile_checkbox.isChecked()
             },
             "svg_pitch": {
                 "export": self.svg_pitch_export_checkbox.isChecked(),
