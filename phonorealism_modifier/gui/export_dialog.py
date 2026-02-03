@@ -154,6 +154,17 @@ class ExportDialog(QDialog):
         self.svg_amplitude_group.setLayout(self.svg_amplitude_layout)
         self.layout.addWidget(self.svg_amplitude_group)
 
+        # Tessera Export
+        self.tessera_group = QGroupBox("Tessera Export")
+        self.tessera_layout = QVBoxLayout()
+        self.tessera_layout.setContentsMargins(10, 10, 10, 10)
+        self.tessera_layout.setSpacing(5)
+        self.tessera_export_checkbox = QCheckBox("Export to Tessera (.sav)")
+        self.tessera_export_checkbox.stateChanged.connect(self.toggle_tessera_options)
+        self.tessera_layout.addWidget(self.tessera_export_checkbox)
+        self.tessera_group.setLayout(self.tessera_layout)
+        self.layout.addWidget(self.tessera_group)
+
         # Buttons
         self.button_box = QWidget()
         self.button_box_layout = QHBoxLayout(self.button_box)
@@ -170,6 +181,7 @@ class ExportDialog(QDialog):
         self.toggle_midi_options(self.midi_export_checkbox.checkState())
         self.toggle_svg_pitch_options(self.svg_pitch_export_checkbox.checkState())
         self.toggle_svg_amplitude_options(self.svg_amplitude_export_checkbox.checkState())
+        self.toggle_tessera_options(self.tessera_export_checkbox.checkState())
 
     def toggle_wav_options(self, state):
         enabled = (state == 2) # Compare integer value
@@ -202,6 +214,10 @@ class ExportDialog(QDialog):
         self.svg_amplitude_width_input.setEnabled(enabled)
         self.svg_amplitude_height_input.setEnabled(enabled)
         self.svg_amplitude_max_points_input.setEnabled(enabled)
+
+    def toggle_tessera_options(self, state):
+        enabled = (state == 2)
+        # No specific options yet, but can be added here later
 
     def get_settings(self):
         return {
@@ -239,6 +255,9 @@ class ExportDialog(QDialog):
                 "width": int(self.svg_amplitude_width_input.text()),
                 "height": int(self.svg_amplitude_height_input.text()),
                 "max_points": int(self.svg_amplitude_max_points_input.text())
+            },
+            "tessera": {
+                "export": self.tessera_export_checkbox.isChecked()
             }
         }
 

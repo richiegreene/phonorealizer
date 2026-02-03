@@ -26,9 +26,155 @@ class Exporter:
 
         if settings['svg_amplitude']['export']:
             self.export_svg_amplitude(settings['svg_amplitude'], output_path)
+            
+        if settings['tessera']['export']:
+            self.export_tessera(output_path)
 
     def export_csv(self, output_path):
         self.data.export_csv(output_path + '.csv')
+    
+    def _db_to_tessera_velocity(self, db, min_audible_db=-60.0, min_vel=0.01):
+        if db < min_audible_db:
+            return 0.0
+        # Map dB from min_audible_db to 0dB to a 0-1 linear velocity scale
+        # Assuming 0dB is max velocity (1.0)
+        # linear scale: (db - min_audible_db) / (0 - min_audible_db)
+        vel = (db - min_audible_db) / (0.0 - min_audible_db)
+        return max(min_vel, min(vel, 1.0)) # Clip between min_vel and 1.0
+
+    def export_tessera(self, output_path):
+        all_harmonics = self.data.get_harmonics()
+        if not all_harmonics:
+            print("No harmonic data to export to Tessera.")
+            return
+
+        notes_lua_table = []
+        midi_c4 = 60 # MIDI note number for C4
+        min_note_duration = 0.01 # Minimum duration for a note in seconds
+
+        # Iterate through ALL harmonics
+        for harmonic_data in all_harmonics:
+            if not harmonic_data or len(harmonic_data) < 2: # Need at least two points to form an envelope
+                continue
+
+            # First point of the harmonic defines the base time, frequency, and amplitude
+            first_time, first_freq, first_amp_db = harmonic_data[0]
+
+            # Convert first frequency to base MIDI note
+            midi_base_note = self._freq_to_midi(first_freq)
+            
+            # Convert base MIDI note to Tessera interval {x, y}
+            semitones_from_c4 = round(midi_base_note - midi_c4)
+            interval_y = int(semitones_from_c4)
+            interval_x = int(-np.floor(semitones_from_c4 / 2.0))
+
+            # Convert base amplitude to Tessera velocity (0.0 to 1.0)
+            vel = self._db_to_tessera_velocity(first_amp_db)
+
+            verts_lua_table = []
+            
+            # Populate verts for pitch and pressure envelopes
+            for current_time, current_freq, current_amp_db in harmonic_data:
+                relative_time = current_time - first_time
+                
+                current_midi = self._freq_to_midi(current_freq)
+                pitch_offset = current_midi - midi_base_note # Pitch offset in semitones
+                
+                pressure_value = self._db_to_tessera_velocity(current_amp_db) # Pressure 0-1
+
+                verts_lua_table.append(f"""\
+						{{
+							{relative_time},
+							{pitch_offset},
+							{pressure_value},
+						}},""")
+            
+            # Ensure the note has a minimum duration if it's too short
+            note_duration = relative_time if harmonic_data else 0.0 # 'relative_time' will be from the last point
+            if note_duration < min_note_duration:
+                # Add a final vert point to ensure minimum duration if needed
+                last_vert = harmonic_data[-1]
+                last_relative_time = last_vert[0] - first_time
+                if last_relative_time < min_note_duration:
+                    pitch_offset_last = self._freq_to_midi(last_vert[1]) - midi_base_note
+                    pressure_last = self._db_to_tessera_velocity(last_vert[2])
+                    verts_lua_table.append(f"""\
+						{{
+							{min_note_duration},
+							{pitch_offset_last},
+							{pressure_last},
+						}},""")
+            
+            note_lua = f"""
+				{{
+					verts = {{
+{os.linesep.join(verts_lua_table)}
+					}},
+					interval = {{
+						{interval_x},
+						{interval_y},
+					}},
+					time = {first_time},
+					vel = {vel},
+				}},"""
+            notes_lua_table.append(note_lua)
+
+        # Basic Lua project structure, similar to tessera_output_test.sav
+        # All notes will be added to a single channel named "Simple Poly"
+        project_lua_template = """local project = {{
+	settings = {{
+		follow = true,
+		chase = false,
+		preview_notes = true,
+	}},
+	VERSION = {{
+		MINOR = 1,
+		PATCH = 1,
+		MAJOR = 0,
+	}},
+	channels = {{
+		{{
+			notes = {{
+{notes_content}
+			}},
+			armed = true,
+			effects = {{
+			}},
+			control = {{
+			}},
+			solo = false,
+			instrument = {{
+				state = {{
+					1.5354823,
+					639.3616,
+					250,
+				}},
+				name = "polysine",
+				mute = false,
+				display_name = "Simple Poly",
+			}},
+			visible = true,
+			mute = false,
+			lock = false,
+			name = "Simple Poly",
+			gain = 1,
+			hue = 89.422045,
+		}},
+	}},
+	name = "Phonorealism Export",
+	transport = {{
+		start_time = 0.0,
+		recording = false,
+	}},
+}}
+return project"""
+
+        full_lua_content = project_lua_template.format(notes_content="\n".join(notes_lua_table))
+        
+        output_filepath = output_path + '.sav'
+        with open(output_filepath, 'w') as f:
+            f.write(full_lua_content)
+        print(f"Tessera file exported to {output_filepath}")
 
     def export_wav(self, wav_settings, output_path, wavetable=None):
         if wav_settings['full']:
