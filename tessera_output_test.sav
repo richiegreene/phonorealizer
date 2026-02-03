@@ -1,0 +1,199 @@
+local project = {
+	settings = {
+		follow = true,
+		chase = false,
+		preview_notes = true,
+	},
+	VERSION = {
+		MINOR = 1,
+		PATCH = 1,
+		MAJOR = 0,
+	},
+	channels = {
+		{
+			notes = {
+			},
+			armed = false,
+			effects = {
+			},
+			control = {
+			},
+			solo = false,
+			instrument = {
+				state = {
+					-6,
+					0.3,
+					0.15,
+				},
+				name = "epiano",
+				mute = false,
+				display_name = "Epiano",
+			},
+			visible = true,
+			mute = false,
+			lock = false,
+			name = "Epiano",
+			gain = 1,
+			hue = 183.48349,
+		},
+		{
+			notes = {
+			},
+			armed = false,
+			effects = {
+			},
+			control = {
+			},
+			solo = false,
+			instrument = {
+				state = {
+					8,
+					-12,
+					2,
+					200,
+				},
+				name = "sampler",
+				mute = false,
+				display_name = "Sampler",
+			},
+			visible = true,
+			mute = false,
+			lock = false,
+			name = "Sampler",
+			gain = 1,
+			hue = 358.81706,
+		},
+		{
+			notes = {
+				{
+					verts = {
+						{
+							0,
+							0,
+							0,
+						},
+						{
+							0.5863585,
+							0,
+							0,
+						},
+					},
+					interval = {
+						0,
+						0,
+					},
+					time = 62.880874,
+					vel = 0.5,
+				},
+				{
+					verts = {
+						{
+							0,
+							0,
+							0,
+						},
+						{
+							0.62961754,
+							0,
+							0,
+						},
+					},
+					interval = {
+						-1,
+						2,
+					},
+					time = 63.430494,
+					vel = 0.5,
+				},
+				{
+					verts = {
+						{
+							0,
+							0,
+							0,
+						},
+						{
+							0.75522067,
+							0,
+							0,
+						},
+					},
+					interval = {
+						-2,
+						4,
+					},
+					time = 63.968564,
+					vel = 0.5,
+				},
+				{
+					verts = {
+						{
+							0,
+							0,
+							0,
+						},
+						{
+							0.75427121,
+							0,
+							0,
+						},
+					},
+					interval = {
+						-1,
+						2,
+					},
+					time = 64.580569,
+					vel = 0.5,
+				},
+				{
+					verts = {
+						{
+							0,
+							0,
+							0,
+						},
+						{
+							1.0667328,
+							0,
+							0,
+						},
+					},
+					interval = {
+						0,
+						0,
+					},
+					time = 65.298462,
+					vel = 0.5,
+				},
+			},
+			armed = true,
+			effects = {
+			},
+			control = {
+			},
+			solo = false,
+			instrument = {
+				state = {
+					1.5354823,
+					639.3616,
+					250,
+				},
+				name = "polysine",
+				mute = false,
+				display_name = "Simple Poly",
+			},
+			visible = true,
+			mute = false,
+			lock = false,
+			name = "Simple Poly",
+			gain = 1,
+			hue = 89.422045,
+		},
+	},
+	name = "Untitled project",
+	transport = {
+		start_time = 61.454748,
+		recording = true,
+	},
+}
+return project

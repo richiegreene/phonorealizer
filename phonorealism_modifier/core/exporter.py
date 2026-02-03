@@ -389,22 +389,52 @@ class Exporter:
         dwg.save()
 
     def export_midi(self, midi_settings, output_path):
-        if midi_settings['full']:
-            self._save_midi(self.data.get_harmonics(), output_path + '.mid', compile_mpe=midi_settings['compile'])
-        if midi_settings['parts']:
-            output_dir = os.path.splitext(output_path)[0] + "_midi_partials"
-            os.makedirs(output_dir, exist_ok=True)
-            for i, partial in enumerate(self.data.get_harmonics()):
-                self._save_midi([partial], os.path.join(output_dir, f"partial_{i+1}.mid"))
+        if midi_settings['compile'] and midi_settings['full']:
+            self._export_compiled_mpe_midi_files(self.data.get_harmonics(), output_path)
+        else:
+            if midi_settings['full']:
+                self._save_midi(self.data.get_harmonics(), output_path + '.mid', compile_mpe=False)
+            if midi_settings['parts']:
+                output_dir = os.path.splitext(output_path)[0] + "_midi_partials"
+                os.makedirs(output_dir, exist_ok=True)
+                for i, partial in enumerate(self.data.get_harmonics()):
+                    self._save_midi([partial], os.path.join(output_dir, f"partial_{i+1}.mid"), compile_mpe=False)
+
+    def _export_compiled_mpe_midi_files(self, all_harmonics, base_output_path, max_voices_per_file=8):
+        if not all_harmonics:
+            return
+
+        total_harmonics = len(all_harmonics)
+        base_name, ext = os.path.splitext(base_output_path)
+        
+        # Split all_harmonics into chunks, ensuring "bottom to top" prioritization
+        # This implicitly groups harmonics 0-14 into file 1, 15-29 into file 2, etc.
+        for i in range(0, total_harmonics, max_voices_per_file):
+            harmonic_chunk = all_harmonics[i : i + max_voices_per_file]
+            
+            # Generate a unique filename for each compiled MIDI file
+            file_suffix = f"_compiled_{i // max_voices_per_file + 1:02d}.mid"
+            output_file_path = base_name + file_suffix
+
+            # Ensure the output directory exists
+            output_dir = os.path.dirname(output_file_path)
+            if output_dir and not os.path.exists(output_dir):
+                os.makedirs(output_dir)
+
+            self._save_midi(harmonic_chunk, output_file_path, compile_mpe=True, max_channels_mpe=max_voices_per_file)
+
 
     def _freq_to_midi(self, freq):
         if freq <= 0:
             return 0
         return 69 + 12 * np.log2(freq / 440.0)
 
-    def _db_to_velocity(self, db):
+    def _db_to_velocity(self, db, min_audible_db=-60.0, min_midi_velocity=1):
+        if db < min_audible_db:
+            return 0
         linear = 10 ** (db / 20.0)
-        return int(min(max(linear * 127, 0), 127))
+        # Ensure minimum velocity is applied if linear is above 0, and clip to 127
+        return int(min(max(linear * 127, min_midi_velocity), 127))
 
     def _calculate_pitch_bend(self, current_freq, base_freq):
         if base_freq == 0 or current_freq == 0:
@@ -422,7 +452,7 @@ class Exporter:
         
         return max(-8192, min(8191, pitch_bend_value))
 
-    def _save_midi(self, harmonics, output_path, ticks_per_beat=480, tempo=120, compile_mpe=False):
+    def _save_midi(self, harmonics, output_path, ticks_per_beat=480, tempo=120, compile_mpe=False, max_channels_mpe=15):
         mid = mido.MidiFile(type=1, ticks_per_beat=ticks_per_beat)
         microseconds_per_beat = mido.bpm2tempo(tempo)
 
@@ -435,9 +465,8 @@ class Exporter:
 
             all_events = [] # Stores (absolute_time_seconds, mido_message_object, harmonic_index)
 
-            # Map harmonic index to MIDI channel (1-15), reserving 0 (MIDI channel 16) for potential global messages if needed
-            # For this context, we'll just cycle through 1-15 for the harmonics
-            harmonic_channels = {h_idx: (h_idx % 15) + 1 for h_idx in range(len(harmonics))}
+            # Map harmonic index to MIDI channel (1 to max_channels_mpe)
+            harmonic_channels = {h_idx: (h_idx % max_channels_mpe) + 1 for h_idx in range(len(harmonics))}
 
             for h_idx, harmonic in enumerate(harmonics):
                 if not harmonic:
