@@ -6,6 +6,7 @@ from xml.etree.ElementTree import Element, SubElement, tostring
 from xml.dom.minidom import parseString
 import librosa
 import mido
+import pyqtgraph as pg
 
 class Exporter:
     def __init__(self, data):
@@ -229,20 +230,26 @@ return project"""
 
     def export_svg_pitch(self, svg_settings, output_path):
         render_mode = 'line' if svg_settings['line'] else 'amplitude' # Determine render mode
-
+        
+        # Create a copy of svg_settings to avoid modifying the original dictionary
+        # and remove 'colormap' key to prevent it from being passed twice via **svg_settings
+        kwargs_settings = svg_settings.copy()
+        colormap_enabled = kwargs_settings.pop('colormap', False)
+        colormap_name = kwargs_settings.pop('colormap_name', 'viridis') # Get colormap name, default to 'viridis'
+        
         if svg_settings['full']:
             if svg_settings['lin']:
-                self._save_full_svg(self.data.get_harmonics(), output_path + '_log.svg', scale='log', render_mode=render_mode, **svg_settings)
+                self._save_full_svg(self.data.get_harmonics(), output_path + '_log.svg', scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, **kwargs_settings)
             if svg_settings['log']:
-                self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', render_mode=render_mode, **svg_settings)
+                self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, **kwargs_settings)
         if svg_settings['parts']:
             output_dir = os.path.splitext(output_path)[0] + "_pitch_partials"
             os.makedirs(output_dir, exist_ok=True)
             for i, partial in enumerate(self.data.get_harmonics()):
                 if svg_settings['lin']:
-                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_lin.svg"), scale='lin', render_mode=render_mode, **svg_settings)
+                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_lin.svg"), scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, **kwargs_settings)
                 if svg_settings['log']:
-                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_log.svg"), scale='log', render_mode=render_mode, **svg_settings)
+                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_log.svg"), scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, **kwargs_settings)
 
     def export_svg_amplitude(self, svg_settings, output_path):
         import svgwrite
@@ -332,7 +339,7 @@ return project"""
 
         dwg.save()
 
-    def _save_full_svg(self, partials, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', **kwargs):
+    def _save_full_svg(self, partials, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', **kwargs):
         import svgwrite
         dwg = svgwrite.Drawing(output_path, profile='tiny')
         dwg.viewbox(0, 0, svg_width, svg_height)
@@ -342,6 +349,20 @@ return project"""
         max_freq_log = np.log10(sr/2)
         max_stroke_width = 5
         min_stroke_width = 0.1
+
+        cmap = None
+        if colormap:
+            if colormap_name == 'Greys (hueless)':
+                # Create a simple grayscale colormap (black to white)
+                # Map 0 (min amplitude) to black (0,0,0) and 1 (max amplitude) to white (255,255,255)
+                # This needs to be a function that returns a QColor for a given normalized value
+                class GreysColormap:
+                    def map(self, val, mode):
+                        gray_val = int(val * 255)
+                        return pg.mkColor((gray_val, gray_val, gray_val))
+                cmap = GreysColormap()
+            else:
+                cmap = pg.colormap.get(colormap_name)
 
         for harmonic in partials:
             if not harmonic or len(harmonic) < 2:
@@ -363,23 +384,35 @@ return project"""
 
             max_amp_db = np.max(amps_db)
             min_amp_db = np.min(amps_db)
-            max_linear_amp = self._db_to_linear(max_amp_db)
-            min_linear_amp = self._db_to_linear(min_amp_db)
-        
+            
+            # Use all amplitudes from the current harmonic for normalization
+            amps_linear = self._db_to_linear(np.array(amps_db))
+            max_linear_amp_segment = np.max(amps_linear)
+            min_linear_amp_segment = np.min(amps_linear)
+            
             stroke_widths = []
+            normalized_amps_for_color = [] # Store normalized amplitudes for color mapping
+
             if render_mode == 'amplitude':
-                for amp_db in amps_db:
-                    linear_amp = self._db_to_linear(amp_db)
-                    if max_linear_amp > min_linear_amp:
-                        normalized_amp = (linear_amp - min_linear_amp) / (max_linear_amp - min_linear_amp)
+                for amp_linear in amps_linear:
+                    if max_linear_amp_segment > min_linear_amp_segment:
+                        normalized_amp = (amp_linear - min_linear_amp_segment) / (max_linear_amp_segment - min_linear_amp_segment)
                     else:
                         normalized_amp = 0
                     stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
                     stroke_width *= gain
                     stroke_widths.append(stroke_width)
-            else:
-                for _ in amps_db:
+                    normalized_amps_for_color.append(normalized_amp) # Use for color mapping
+            else: # render_mode == 'line'
+                # If render_mode is 'line', use a constant stroke width
+                # But if colormap is enabled, we still need normalized amplitudes for color
+                for amp_linear in amps_linear:
                     stroke_widths.append(min_stroke_width * gain)
+                    if max_linear_amp_segment > min_linear_amp_segment:
+                        normalized_amp = (amp_linear - min_linear_amp_segment) / (max_linear_amp_segment - min_linear_amp_segment)
+                    else:
+                        normalized_amp = 0
+                    normalized_amps_for_color.append(normalized_amp) # Use for color mapping
 
             normals = []
             for i in range(len(points)):
@@ -415,24 +448,54 @@ return project"""
                 else:
                     normal = np.array([0.0, 1.0])
                 normals.append(normal)
-
-            top_path = [p + n * (w / 2.0) for p, n, w in zip(points, normals, stroke_widths)]
-            bottom_path = [p - n * (w / 2.0) for p, n, w in zip(points, normals, stroke_widths)]
-
-            path_d = f"M {top_path[0][0]},{top_path[0][1]} "
-            for p in top_path[1:]:
-                path_d += f"L {p[0]},{p[1]} "
             
-            path_d += f"L {bottom_path[-1][0]},{bottom_path[-1][1]} "
-            for p in reversed(bottom_path[:-1]):
-                path_d += f"L {p[0]},{p[1]} "
-            path_d += "Z"
+            top_path = []
+            bottom_path = []
+            
+            # Interpolate normalized_amps_for_color to match resolution of points
+            # Ensure normalized_amps_for_color is not empty
+            if not normalized_amps_for_color:
+                normalized_amps_for_color = [0] * len(points)
+            elif len(normalized_amps_for_color) != len(points):
+                # If lengths don't match (e.g., due to max_points), interpolate
+                x_orig = np.linspace(0, 1, len(normalized_amps_for_color))
+                x_new = np.linspace(0, 1, len(points))
+                normalized_amps_for_color = np.interp(x_new, x_orig, normalized_amps_for_color)
 
-            dwg.add(dwg.path(d=path_d, stroke='none', fill=svgwrite.rgb(0, 0, 0, '%')))
+
+            for j in range(len(points)):
+                top_path.append(points[j] + normals[j] * (stroke_widths[j] / 2.0))
+                bottom_path.append(points[j] - normals[j] * (stroke_widths[j] / 2.0))
+
+            if colormap:
+                # Draw as a series of colored polygons
+                for j in range(len(points) - 1):
+                    # Average amplitude for this segment
+                    avg_normalized_amp = (normalized_amps_for_color[j] + normalized_amps_for_color[j+1]) / 2
+                    color_q = cmap.map(avg_normalized_amp, mode='qcolor')
+                    fill_color = svgwrite.rgb(color_q.red(), color_q.green(), color_q.blue(), '%')
+
+                    # Create a polygon for each segment
+                    segment_points = [
+                        top_path[j], top_path[j+1],
+                        bottom_path[j+1], bottom_path[j]
+                    ]
+                    dwg.add(dwg.polygon(points=segment_points, stroke='none', fill=fill_color))
+            else:
+                # Original behavior: single path with black fill
+                path_d = f"M {top_path[0][0]},{top_path[0][1]} "
+                for p in top_path[1:]:
+                    path_d += f"L {p[0]},{p[1]} "
+                
+                path_d += f"L {bottom_path[-1][0]},{bottom_path[-1][1]} "
+                for p in reversed(bottom_path[:-1]):
+                    path_d += f"L {p[0]},{p[1]} "
+                path_d += "Z"
+                dwg.add(dwg.path(d=path_d, stroke='none', fill=svgwrite.rgb(0, 0, 0, '%')))
 
         dwg.save()
 
-    def _save_partial_svg(self, harmonic, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', **kwargs):
+    def _save_partial_svg(self, harmonic, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', **kwargs):
         import svgwrite
         dwg = svgwrite.Drawing(output_path, profile='tiny')
         dwg.viewbox(0, 0, svg_width, svg_height)
@@ -444,6 +507,21 @@ return project"""
         if not harmonic or len(harmonic) < 2:
             dwg.save()
             return
+
+        max_stroke_width = 5
+        min_stroke_width = 0.1
+
+        cmap = None
+        if colormap:
+            if colormap_name == 'Greys (hueless)':
+                # Create a simple grayscale colormap (black to white)
+                class GreysColormap:
+                    def map(self, val, mode):
+                        gray_val = int(val * 255)
+                        return pg.mkColor((gray_val, gray_val, gray_val))
+                cmap = GreysColormap()
+            else:
+                cmap = pg.colormap.get(colormap_name)
 
         times, freqs, amps_db = zip(*harmonic)
         points = []
@@ -462,26 +540,33 @@ return project"""
 
         max_amp_db = np.max(amps_db)
         min_amp_db = np.min(amps_db)
-        max_linear_amp = self._db_to_linear(max_amp_db)
-        min_linear_amp = self._db_to_linear(min_amp_db)
-    
-        max_stroke_width = 5
-        min_stroke_width = 0.1
         
+        # Use all amplitudes from the current harmonic for normalization
+        amps_linear = self._db_to_linear(np.array(amps_db))
+        max_linear_amp_segment = np.max(amps_linear)
+        min_linear_amp_segment = np.min(amps_linear)
+    
         stroke_widths = []
+        normalized_amps_for_color = [] # Store normalized amplitudes for color mapping
+        
         if render_mode == 'amplitude':
-            for amp_db in amps_db:
-                linear_amp = self._db_to_linear(amp_db)
-                if max_linear_amp > min_linear_amp:
-                    normalized_amp = (linear_amp - min_linear_amp) / (max_linear_amp - min_linear_amp)
+            for amp_linear in amps_linear:
+                if max_linear_amp_segment > min_linear_amp_segment:
+                    normalized_amp = (amp_linear - min_linear_amp_segment) / (max_linear_amp_segment - min_linear_amp_segment)
                 else:
                     normalized_amp = 0
                 stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
                 stroke_width *= gain
                 stroke_widths.append(stroke_width)
-        else:
-            for _ in amps_db:
+                normalized_amps_for_color.append(normalized_amp) # Use for color mapping
+        else: # render_mode == 'line'
+            for amp_linear in amps_linear:
                 stroke_widths.append(min_stroke_width * gain)
+                if max_linear_amp_segment > min_linear_amp_segment:
+                    normalized_amp = (amp_linear - min_linear_amp_segment) / (max_linear_amp_segment - min_linear_amp_segment)
+                else:
+                    normalized_amp = 0
+                normalized_amps_for_color.append(normalized_amp) # Use for color mapping
 
         normals = []
         for i in range(len(points)):
@@ -518,22 +603,48 @@ return project"""
                 normal = np.array([0.0, 1.0])
             normals.append(normal)
 
-        top_path = [p + n * (w / 2.0) for p, n, w in zip(points, normals, stroke_widths)]
-        bottom_path = [p - n * (w / 2.0) for p, n, w in zip(points, normals, stroke_widths)]
-
-        path_d = f"M {top_path[0][0]},{top_path[0][1]} "
-        for p in top_path[1:]:
-            path_d += f"L {p[0]},{p[1]} "
+        top_path = []
+        bottom_path = []
         
-        path_d += f"L {bottom_path[-1][0]},{bottom_path[-1][1]} "
-        for p in reversed(bottom_path[:-1]):
-            path_d += f"L {p[0]},{p[1]} "
-        path_d += "Z"
+        # Interpolate normalized_amps_for_color to match resolution of points
+        if not normalized_amps_for_color:
+            normalized_amps_for_color = [0] * len(points)
+        elif len(normalized_amps_for_color) != len(points):
+            x_orig = np.linspace(0, 1, len(normalized_amps_for_color))
+            x_new = np.linspace(0, 1, len(points))
+            normalized_amps_for_color = np.interp(x_new, x_orig, normalized_amps_for_color)
 
-        dwg.add(dwg.path(d=path_d, stroke='none', fill=svgwrite.rgb(0, 0, 0, '%')))
+        for j in range(len(points)):
+            top_path.append(points[j] + normals[j] * (stroke_widths[j] / 2.0))
+            bottom_path.append(points[j] - normals[j] * (stroke_widths[j] / 2.0))
+
+        if colormap:
+            # Draw as a series of colored polygons
+            for j in range(len(points) - 1):
+                # Average amplitude for this segment
+                avg_normalized_amp = (normalized_amps_for_color[j] + normalized_amps_for_color[j+1]) / 2
+                color_q = cmap.map(avg_normalized_amp, mode='qcolor')
+                fill_color = svgwrite.rgb(color_q.red(), color_q.green(), color_q.blue(), '%')
+
+                # Create a polygon for each segment
+                segment_points = [
+                    top_path[j], top_path[j+1],
+                    bottom_path[j+1], bottom_path[j]
+                ]
+                dwg.add(dwg.polygon(points=segment_points, stroke='none', fill=fill_color))
+        else:
+            # Original behavior: single path with black fill
+            path_d = f"M {top_path[0][0]},{top_path[0][1]} "
+            for p in top_path[1:]:
+                path_d += f"L {p[0]},{p[1]} "
+
+            path_d += f"L {bottom_path[-1][0]},{bottom_path[-1][1]} "
+            for p in reversed(bottom_path[:-1]):
+                path_d += f"L {p[0]},{p[1]} "
+            path_d += "Z"
+            dwg.add(dwg.path(d=path_d, stroke='none', fill=svgwrite.rgb(0, 0, 0, '%')))
 
         dwg.save()
-
     def export_midi(self, midi_settings, output_path):
         if midi_settings['compile'] and midi_settings['full']:
             self._export_compiled_mpe_midi_files(self.data.get_harmonics(), output_path)

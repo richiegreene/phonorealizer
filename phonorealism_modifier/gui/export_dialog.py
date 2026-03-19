@@ -1,7 +1,7 @@
 import sys
 from PySide6.QtWidgets import (
     QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QCheckBox, QPushButton, QLabel, QLineEdit, QGridLayout
+    QCheckBox, QPushButton, QLabel, QLineEdit, QGridLayout, QComboBox
 )
 from PySide6.QtCore import Qt
 
@@ -89,6 +89,7 @@ class ExportDialog(QDialog):
         self.svg_pitch_amp_checkbox = QCheckBox("Amplitude")
         self.svg_pitch_amp_checkbox.setChecked(True) # Set to checked by default
         self.svg_pitch_line_checkbox = QCheckBox("Line")
+        self.svg_pitch_colormap_checkbox = QCheckBox("Colormap")
 
         self.svg_pitch_width_input = QLineEdit("1000")
         self.svg_pitch_height_input = QLineEdit("500")
@@ -103,17 +104,24 @@ class ExportDialog(QDialog):
         svg_pitch_options_grid.addWidget(self.svg_pitch_log_checkbox, 0, 1)
         svg_pitch_options_grid.addWidget(self.svg_pitch_full_checkbox, 1, 0)
         svg_pitch_options_grid.addWidget(self.svg_pitch_parts_checkbox, 1, 1)
-        svg_pitch_options_grid.addWidget(self.svg_pitch_amp_checkbox, 2, 0)
-        svg_pitch_options_grid.addWidget(self.svg_pitch_line_checkbox, 2, 1)
+        self.svg_pitch_colormap_combo = QComboBox()
+        self.svg_pitch_colormap_combo.addItems(['viridis', 'plasma', 'inferno', 'magma', 'cividis', 'Greys (hueless)'])
+        self.svg_pitch_colormap_combo.setCurrentText('viridis') # Default selection
+        svg_pitch_options_grid.addWidget(QLabel("Colormap:"), 3, 0) # Adjust row for new combo box
+        svg_pitch_options_grid.addWidget(self.svg_pitch_colormap_combo, 3, 1, 1, 2) # Span 2 columns
 
-        svg_pitch_options_grid.addWidget(QLabel("Width:"), 3, 0)
-        svg_pitch_options_grid.addWidget(self.svg_pitch_width_input, 3, 1)
-        svg_pitch_options_grid.addWidget(QLabel("Height:"), 4, 0)
-        svg_pitch_options_grid.addWidget(self.svg_pitch_height_input, 4, 1)
-        svg_pitch_options_grid.addWidget(QLabel("Gain:"), 5, 0)
-        svg_pitch_options_grid.addWidget(self.svg_pitch_gain_input, 5, 1)
-        svg_pitch_options_grid.addWidget(QLabel("Max Points:"), 6, 0)
-        svg_pitch_options_grid.addWidget(self.svg_pitch_max_points_input, 6, 1)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_amp_checkbox, 4, 0)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_line_checkbox, 4, 1)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_colormap_checkbox, 4, 2)
+
+        svg_pitch_options_grid.addWidget(QLabel("Width:"), 5, 0)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_width_input, 5, 1)
+        svg_pitch_options_grid.addWidget(QLabel("Height:"), 6, 0)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_height_input, 6, 1)
+        svg_pitch_options_grid.addWidget(QLabel("Gain:"), 7, 0)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_gain_input, 7, 1)
+        svg_pitch_options_grid.addWidget(QLabel("Max Points:"), 8, 0)
+        svg_pitch_options_grid.addWidget(self.svg_pitch_max_points_input, 8, 1)
 
         self.svg_pitch_layout.addLayout(svg_pitch_options_grid)
         self.svg_pitch_group.setLayout(self.svg_pitch_layout)
@@ -202,6 +210,8 @@ class ExportDialog(QDialog):
         self.svg_pitch_parts_checkbox.setEnabled(enabled)
         self.svg_pitch_amp_checkbox.setEnabled(enabled)
         self.svg_pitch_line_checkbox.setEnabled(enabled)
+        self.svg_pitch_colormap_checkbox.setEnabled(enabled)
+        self.svg_pitch_colormap_combo.setEnabled(enabled)
         self.svg_pitch_width_input.setEnabled(enabled)
         self.svg_pitch_height_input.setEnabled(enabled)
         self.svg_pitch_gain_input.setEnabled(enabled)
@@ -246,7 +256,9 @@ class ExportDialog(QDialog):
                 "gain": float(self.svg_pitch_gain_input.text()),
                 "max_points": int(self.svg_pitch_max_points_input.text()),
                 "amplitude": self.svg_pitch_amp_checkbox.isChecked(),
-                "line": self.svg_pitch_line_checkbox.isChecked()
+                "line": self.svg_pitch_line_checkbox.isChecked(),
+                "colormap": self.svg_pitch_colormap_checkbox.isChecked(),
+                "colormap_name": self.svg_pitch_colormap_combo.currentText()
             },
             "svg_amplitude": {
                 "export": self.svg_amplitude_export_checkbox.isChecked(),
