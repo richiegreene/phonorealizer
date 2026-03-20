@@ -108,7 +108,9 @@ class ExportDialog(QDialog):
         self.svg_pitch_colormap_combo.addItems(['viridis', 'plasma', 'inferno', 'magma', 'cividis', 'Greys (hueless)', 'Greys (hueless, inverted)'])
         self.svg_pitch_colormap_combo.setCurrentText('viridis') # Default selection
         svg_pitch_options_grid.addWidget(QLabel("Colormap:"), 3, 0) # Adjust row for new combo box
-        svg_pitch_options_grid.addWidget(self.svg_pitch_colormap_combo, 3, 1, 1, 2) # Span 2 columns
+        svg_pitch_options_grid.addWidget(self.svg_pitch_colormap_combo, 3, 1) # Span 2 columns
+        self.svg_pitch_background_grid_checkbox = QCheckBox("Background Grid")
+        svg_pitch_options_grid.addWidget(self.svg_pitch_background_grid_checkbox, 3, 2)
 
         svg_pitch_options_grid.addWidget(self.svg_pitch_amp_checkbox, 4, 0)
         svg_pitch_options_grid.addWidget(self.svg_pitch_line_checkbox, 4, 1)
@@ -212,6 +214,7 @@ class ExportDialog(QDialog):
         self.svg_pitch_line_checkbox.setEnabled(enabled)
         self.svg_pitch_colormap_checkbox.setEnabled(enabled)
         self.svg_pitch_colormap_combo.setEnabled(enabled)
+        self.svg_pitch_background_grid_checkbox.setEnabled(enabled)
         self.svg_pitch_width_input.setEnabled(enabled)
         self.svg_pitch_height_input.setEnabled(enabled)
         self.svg_pitch_gain_input.setEnabled(enabled)
@@ -258,7 +261,8 @@ class ExportDialog(QDialog):
                 "amplitude": self.svg_pitch_amp_checkbox.isChecked(),
                 "line": self.svg_pitch_line_checkbox.isChecked(),
                 "colormap": self.svg_pitch_colormap_checkbox.isChecked(),
-                "colormap_name": self.svg_pitch_colormap_combo.currentText()
+                "colormap_name": self.svg_pitch_colormap_combo.currentText(),
+                "background_grid": self.svg_pitch_background_grid_checkbox.isChecked()
             },
             "svg_amplitude": {
                 "export": self.svg_amplitude_export_checkbox.isChecked(),

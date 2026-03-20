@@ -228,6 +228,51 @@ return project"""
     def _db_to_linear(self, db):
         return 10 ** (db / 20)
 
+    def _hz_to_cents(self, freq, reference_freq=440.0):
+        """Converts frequency (Hz) to cents relative to a reference frequency."""
+        if freq <= 0:
+            return -np.inf # Or some other suitable value for invalid frequencies
+        return 1200 * np.log2(freq / reference_freq)
+
+    def _cents_to_hz(self, cents, reference_freq=440.0):
+        """Converts cents to frequency (Hz) relative to a reference frequency."""
+        return reference_freq * (2 ** (cents / 1200.0))
+
+    def _freq_to_note_name(self, freq, reference_freq=440.0):
+        """Converts frequency (Hz) to a musical note name (e.g., C4, A#3)."""
+        if freq <= 0:
+            return ""
+
+        note_names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+        
+        # Calculate the number of semitones from A4 (440 Hz)
+        semitones = 12 * np.log2(freq / reference_freq)
+        
+        # A4 is MIDI note 69.
+        midi_note = int(round(semitones)) + 69
+        
+        # Calculate octave and note index
+        octave = (midi_note // 12) - 1 # MIDI C0 is octave -1 in some systems, C4 is 60, A4 is 69
+        note_index = midi_note % 12
+        
+        return f"{note_names[note_index]}{octave}"
+
+    def _get_note_names(self, min_freq, max_freq, reference_freq=440.0):
+        """Generates a list of note frequencies and their names within a given range."""
+        notes = []
+        midi_min = int(np.floor(12 * np.log2(min_freq / reference_freq) + 69)) if min_freq > 0 else 0
+        midi_max = int(np.ceil(12 * np.log2(max_freq / reference_freq) + 69)) if max_freq > 0 else 127
+
+        for midi_note in range(midi_min, midi_max + 1):
+            freq = reference_freq * (2 ** ((midi_note - 69) / 12.0))
+            # Ensure frequency is within a reasonable range (e.g., human hearing)
+            if 20 <= freq <= 20000:
+                 notes.append((freq, self._freq_to_note_name(freq, reference_freq)))
+        
+        # Sort by frequency to ensure correct order
+        notes.sort(key=lambda x: x[0])
+        return notes
+
     def export_svg_pitch(self, svg_settings, output_path):
         render_mode = 'line' if svg_settings['line'] else 'amplitude' # Determine render mode
         
@@ -235,21 +280,22 @@ return project"""
         # and remove 'colormap' key to prevent it from being passed twice via **svg_settings
         kwargs_settings = svg_settings.copy()
         colormap_enabled = kwargs_settings.pop('colormap', False)
-        colormap_name = kwargs_settings.pop('colormap_name', 'viridis') # Get colormap name, default to 'viridis'
+        colormap_name = kwargs_settings.pop('colormap_name', 'viridis')
+        background_grid_enabled = kwargs_settings.pop('background_grid', False)
         
         if svg_settings['full']:
             if svg_settings['lin']:
-                self._save_full_svg(self.data.get_harmonics(), output_path + '_log.svg', scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, **kwargs_settings)
+                self._save_full_svg(self.data.get_harmonics(), output_path + '_log.svg', scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, **kwargs_settings)
             if svg_settings['log']:
-                self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, **kwargs_settings)
+                self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, **kwargs_settings)
         if svg_settings['parts']:
             output_dir = os.path.splitext(output_path)[0] + "_pitch_partials"
             os.makedirs(output_dir, exist_ok=True)
             for i, partial in enumerate(self.data.get_harmonics()):
                 if svg_settings['lin']:
-                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_lin.svg"), scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, **kwargs_settings)
+                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_lin.svg"), scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, **kwargs_settings)
                 if svg_settings['log']:
-                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_log.svg"), scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, **kwargs_settings)
+                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_log.svg"), scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, **kwargs_settings)
 
     def export_svg_amplitude(self, svg_settings, output_path):
         import svgwrite
@@ -339,14 +385,155 @@ return project"""
 
         dwg.save()
 
-    def _save_full_svg(self, partials, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', **kwargs):
+    def _save_full_svg(self, partials, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', background_grid=False, **kwargs):
         import svgwrite
         dwg = svgwrite.Drawing(output_path, profile='tiny')
         dwg.viewbox(0, 0, svg_width, svg_height)
-        time_scale = svg_width / self.data.get_duration()
-        freq_scale = svg_height / (sr / 2)
-        min_freq_log = np.log10(20)
-        max_freq_log = np.log10(sr/2)
+
+        # Initialize these based on overall data if background_grid is true, otherwise use previous logic
+        current_time_scale = svg_width / self.data.get_duration()
+        current_freq_scale = svg_height / (sr / 2) # Only for linear scale
+        
+        # These are used consistently regardless of grid for actual harmonic plotting
+        min_freq_log_plot = np.log10(20)
+        max_freq_log_plot = np.log10(sr/2)
+
+        if background_grid:
+            all_times = []
+            all_freqs = []
+            for harmonic_group in partials: # Renamed variable to avoid conflict with method parameter
+                if harmonic_group:
+                    times, freqs, _ = zip(*harmonic_group)
+                    all_times.extend(times)
+                    all_freqs.extend(freqs)
+            
+            if not all_times or not all_freqs: # No data to draw grid for, but still want to create an empty SVG
+                dwg.save()
+                return
+
+            min_data_time = min(all_times)
+            max_data_time = max(all_times)
+            min_data_freq = min(f for f in all_freqs if f > 0) # Ensure positive frequency
+            max_data_freq = max(all_freqs)
+
+            # Add padding to data ranges
+            time_padding = (max_data_time - min_data_time) * 0.05 if (max_data_time - min_data_time) > 0 else 0.5
+            min_time_padded = max(0.0, min_data_time - time_padding)
+            max_time_padded = max_data_time + time_padding
+
+            # Frequency padding for linear mode (in Hz)
+            freq_padding_lin = (max_data_freq - min_data_freq) * 0.05 if (max_data_freq - min_data_freq) > 0 else min_data_freq * 0.1
+            min_freq_lin_padded = max(20.0, min_data_freq - freq_padding_lin)
+            max_freq_lin_padded = max_data_freq + freq_padding_lin
+            
+            # Recalculate time_scale based on padded range for grid drawing
+            current_time_scale = svg_width / (max_time_padded - min_time_padded) if (max_time_padded - min_time_padded) > 0 else svg_width
+            # Calculate x_offset to shift the data to fit the padded range within the SVG width
+            x_offset_for_grid = -min_time_padded * current_time_scale
+
+            # --- Draw Time Grid ---
+            time_major_interval = 1.0 # 1 second
+            time_minor_interval = 0.1 # 0.1 seconds
+            
+            current_time_tick = np.floor(min_time_padded / time_major_interval) * time_major_interval
+            while current_time_tick <= max_time_padded:
+                x_pos = current_time_tick * current_time_scale + x_offset_for_grid
+                if 0 <= x_pos <= svg_width:
+                    dwg.add(dwg.line((x_pos, 0), (x_pos, svg_height), stroke='grey', stroke_width=0.5, opacity=0.7))
+                    dwg.add(dwg.text(f"{current_time_tick:.0f}s", insert=(x_pos + 3, svg_height - 5), fill='grey', font_size='8pt', text_anchor='start'))
+                
+                minor_time = current_time_tick + time_minor_interval
+                while minor_time < current_time_tick + time_major_interval and minor_time <= max_time_padded:
+                    x_minor_pos = minor_time * current_time_scale + x_offset_for_grid
+                    if 0 <= x_minor_pos <= svg_width:
+                        dwg.add(dwg.line((x_minor_pos, 0), (x_minor_pos, svg_height), stroke='lightgrey', stroke_width=0.2, opacity=0.5))
+                    minor_time += time_minor_interval
+                current_time_tick += time_major_interval
+
+            # --- Draw Frequency Grid ---
+            if scale == 'log': # Cents mode
+                reference_freq_for_cents = 440.0
+                cents_padding = 100.0 # Pad by 100 cents (semitone) on each side
+
+                min_cents_data = self._hz_to_cents(min_data_freq, reference_freq_for_cents)
+                max_cents_data = self._hz_to_cents(max_data_freq, reference_freq_for_cents)
+
+                min_cents_padded = min_cents_data - cents_padding
+                max_cents_padded = max_cents_data + cents_padding
+
+                # Use min_freq_log_plot and max_freq_log_plot for vertical mapping
+                # These define the total frequency range mapped to svg_height
+                
+                # Generate note names for major frequency ticks
+                note_frequencies = self._get_note_names(
+                    self._cents_to_hz(min_cents_padded, reference_freq_for_cents),
+                    self._cents_to_hz(max_cents_padded, reference_freq_for_cents),
+                    reference_freq_for_cents
+                )
+                
+                for freq, note_name in note_frequencies:
+                    f_mapped = max(freq, 20)
+                    y_pos = svg_height - ((np.log10(f_mapped) - min_freq_log_plot) / (max_freq_log_plot - min_freq_log_plot)) * svg_height
+                    
+                    if 0 <= y_pos <= svg_height:
+                        dwg.add(dwg.line((0, y_pos), (svg_width, y_pos), stroke='grey', stroke_width=0.5, opacity=0.7))
+                        dwg.add(dwg.text(note_name, insert=(3, y_pos - 3), fill='grey', font_size='8pt', text_anchor='start'))
+
+                # Minor ticks: 100 cents (semitones)
+                current_cents = np.floor(min_cents_padded / 100.0) * 100.0
+                while current_cents <= max_cents_padded:
+                    freq = self._cents_to_hz(current_cents, reference_freq_for_cents)
+                    is_major_note = False
+                    for nf, _ in note_frequencies:
+                        if np.isclose(freq, nf, atol=0.1):
+                            is_major_note = True
+                            break
+                    
+                    if not is_major_note and 20 <= freq <= 20000:
+                        f_mapped = max(freq, 20)
+                        y_pos = svg_height - ((np.log10(f_mapped) - min_freq_log_plot) / (max_freq_log_plot - min_freq_log_plot)) * svg_height
+                        if 0 <= y_pos <= svg_height:
+                            dwg.add(dwg.line((0, y_pos), (svg_width, y_pos), stroke='lightgrey', stroke_width=0.2, opacity=0.5))
+                            dwg.add(dwg.text(f"{int(current_cents)}", insert=(svg_width - 3, y_pos - 3), fill='lightgrey', font_size='6pt', text_anchor='end'))
+
+                    current_cents += 100.0
+                # Restore original time_scale for harmonic plotting
+                time_scale = svg_width / self.data.get_duration()
+            else: # Linear Hz mode
+                # Recalculate freq_scale_lin_effective based on padded range for grid drawing
+                current_freq_scale = svg_height / (max_freq_lin_padded - min_freq_lin_padded) if (max_freq_lin_padded - min_freq_lin_padded) > 0 else svg_height
+                y_offset_for_grid = -min_freq_lin_padded * current_freq_scale
+                
+                freq_major_interval = 100.0 # 100 Hz
+                freq_minor_interval = 10.0 # 10 Hz
+
+                current_freq_tick = np.floor(min_freq_lin_padded / freq_major_interval) * freq_major_interval
+                while current_freq_tick <= max_freq_lin_padded:
+                    y_pos = svg_height - (current_freq_tick * current_freq_scale + y_offset_for_grid)
+                    if 0 <= y_pos <= svg_height:
+                        dwg.add(dwg.line((0, y_pos), (svg_width, y_pos), stroke='grey', stroke_width=0.5, opacity=0.7))
+                        dwg.add(dwg.text(f"{current_freq_tick:.0f}Hz", insert=(3, y_pos - 3), fill='grey', font_size='8pt', text_anchor='start'))
+
+                    minor_freq = current_freq_tick + freq_minor_interval
+                    while minor_freq < current_freq_tick + freq_major_interval and minor_freq <= max_freq_lin_padded:
+                        y_minor_pos = svg_height - (minor_freq * current_freq_scale + y_offset_for_grid)
+                        if 0 <= y_minor_pos <= svg_height:
+                            dwg.add(dwg.line((0, y_minor_pos), (svg_width, y_minor_pos), stroke='lightgrey', stroke_width=0.2, opacity=0.5))
+                        minor_freq += freq_minor_interval
+                    current_freq_tick += freq_major_interval
+            
+            # These variables need to be reset to the original interpretation for harmonic plotting
+            # if background_grid was active, because the current_time_scale and current_freq_scale were adjusted for grid.
+            time_scale = svg_width / self.data.get_duration()
+            freq_scale = svg_height / (sr / 2) # Used for linear frequency mapping of harmonics
+            min_freq_log = np.log10(20) # Used for log frequency mapping of harmonics
+            max_freq_log = np.log10(sr/2) # Used for log frequency mapping of harmonics
+        else: # background_grid is False, use original mapping
+            time_scale = svg_width / self.data.get_duration()
+            freq_scale = svg_height / (sr / 2)
+            min_freq_log = np.log10(20)
+            max_freq_log = np.log10(sr/2)
+
         max_stroke_width = 5
         min_stroke_width = 0.1
 
@@ -510,14 +697,156 @@ return project"""
 
         dwg.save()
 
-    def _save_partial_svg(self, harmonic, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', **kwargs):
+    def _save_partial_svg(self, harmonic, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', background_grid=False, **kwargs):
         import svgwrite
         dwg = svgwrite.Drawing(output_path, profile='tiny')
         dwg.viewbox(0, 0, svg_width, svg_height)
-        time_scale = svg_width / self.data.get_duration()
-        freq_scale = svg_height / (sr / 2)
-        min_freq_log = np.log10(20)
-        max_freq_log = np.log10(sr/2)
+
+        # Initialize these based on overall data if background_grid is true, otherwise use previous logic
+        current_time_scale = svg_width / self.data.get_duration()
+        current_freq_scale = svg_height / (sr / 2) # Only for linear scale
+        
+        # These are used consistently regardless of grid for actual harmonic plotting
+        min_freq_log_plot = np.log10(20)
+        max_freq_log_plot = np.log10(sr/2)
+
+        if background_grid:
+            all_times = []
+            all_freqs = []
+            if harmonic: # harmonic is already a single list of tuples
+                times, freqs, _ = zip(*harmonic)
+                all_times.extend(times)
+                all_freqs.extend(freqs)
+            
+            if not all_times or not all_freqs: # No data to draw grid for, but still want to create an empty SVG
+                dwg.save()
+                return
+
+            min_data_time = min(all_times)
+            max_data_time = max(all_times)
+            min_data_freq = min(f for f in all_freqs if f > 0) # Ensure positive frequency
+            max_data_freq = max(all_freqs)
+
+            # Add padding to data ranges
+            time_padding = (max_data_time - min_data_time) * 0.05 if (max_data_time - min_data_time) > 0 else 0.5
+            min_time_padded = max(0.0, min_data_time - time_padding)
+            max_time_padded = max_data_time + time_padding
+
+            # Frequency padding for linear mode (in Hz)
+            freq_padding_lin = (max_data_freq - min_data_freq) * 0.05 if (max_data_freq - min_data_freq) > 0 else min_data_freq * 0.1
+            min_freq_lin_padded = max(20.0, min_data_freq - freq_padding_lin)
+            max_freq_lin_padded = max_data_freq + freq_padding_lin
+            
+            # Recalculate time_scale based on padded range for grid drawing
+            current_time_scale = svg_width / (max_time_padded - min_time_padded) if (max_time_padded - min_time_padded) > 0 else svg_width
+            # Calculate x_offset to shift the data to fit the padded range within the SVG width
+            x_offset_for_grid = -min_time_padded * current_time_scale
+
+            # --- Draw Time Grid ---
+            time_major_interval = 1.0 # 1 second
+            time_minor_interval = 0.1 # 0.1 seconds
+            
+            current_time_tick = np.floor(min_time_padded / time_major_interval) * time_major_interval
+            while current_time_tick <= max_time_padded:
+                x_pos = current_time_tick * current_time_scale + x_offset_for_grid
+                if 0 <= x_pos <= svg_width:
+                    dwg.add(dwg.line((x_pos, 0), (x_pos, svg_height), stroke='grey', stroke_width=0.5, opacity=0.7))
+                    dwg.add(dwg.text(f"{current_time_tick:.0f}s", insert=(x_pos + 3, svg_height - 5), fill='grey', font_size='8pt', text_anchor='start'))
+                
+                minor_time = current_time_tick + time_minor_interval
+                while minor_time < current_time_tick + time_major_interval and minor_time <= max_time_padded:
+                    x_minor_pos = minor_time * current_time_scale + x_offset_for_grid
+                    if 0 <= x_minor_pos <= svg_width:
+                        dwg.add(dwg.line((x_minor_pos, 0), (x_minor_pos, svg_height), stroke='lightgrey', stroke_width=0.2, opacity=0.5))
+                    minor_time += time_minor_interval
+                current_time_tick += time_major_interval
+
+            # --- Draw Frequency Grid ---
+            if scale == 'log': # Cents mode
+                reference_freq_for_cents = 440.0
+                cents_padding = 100.0 # Pad by 100 cents (semitone) on each side
+
+                min_cents_data = self._hz_to_cents(min_data_freq, reference_freq_for_cents)
+                max_cents_data = self._hz_to_cents(max_data_freq, reference_freq_for_cents)
+
+                min_cents_padded = min_cents_data - cents_padding
+                max_cents_padded = max_cents_data + cents_padding
+
+                # Use min_freq_log_plot and max_freq_log_plot for vertical mapping
+                # These define the total frequency range mapped to svg_height
+                
+                # Generate note names for major frequency ticks
+                note_frequencies = self._get_note_names(
+                    self._cents_to_hz(min_cents_padded, reference_freq_for_cents),
+                    self._cents_to_hz(max_cents_padded, reference_freq_for_cents),
+                    reference_freq_for_cents
+                )
+                
+                for freq, note_name in note_frequencies:
+                    f_mapped = max(freq, 20)
+                    y_pos = svg_height - ((np.log10(f_mapped) - min_freq_log_plot) / (max_freq_log_plot - min_freq_log_plot)) * svg_height
+                    
+                    if 0 <= y_pos <= svg_height:
+                        dwg.add(dwg.line((0, y_pos), (svg_width, y_pos), stroke='grey', stroke_width=0.5, opacity=0.7))
+                        dwg.add(dwg.text(note_name, insert=(3, y_pos - 3), fill='grey', font_size='8pt', text_anchor='start'))
+
+                # Minor ticks: 100 cents (semitones)
+                current_cents = np.floor(min_cents_padded / 100.0) * 100.0
+                while current_cents <= max_cents_padded:
+                    freq = self._cents_to_hz(current_cents, reference_freq_for_cents)
+                    is_major_note = False
+                    for nf, _ in note_frequencies:
+                        if np.isclose(freq, nf, atol=0.1):
+                            is_major_note = True
+                            break
+                    
+                    if not is_major_note and 20 <= freq <= 20000:
+                        f_mapped = max(freq, 20)
+                        y_pos = svg_height - ((np.log10(f_mapped) - min_freq_log_plot) / (max_freq_log_plot - min_freq_log_plot)) * svg_height
+                        if 0 <= y_pos <= svg_height:
+                            dwg.add(dwg.line((0, y_pos), (svg_width, y_pos), stroke='lightgrey', stroke_width=0.2, opacity=0.5))
+                            dwg.add(dwg.text(f"{int(current_cents)}", insert=(svg_width - 3, y_pos - 3), fill='lightgrey', font_size='6pt', text_anchor='end'))
+
+                    current_cents += 100.0
+                # Restore original time_scale for harmonic plotting
+                time_scale = svg_width / self.data.get_duration()
+            else: # Linear Hz mode
+                # Recalculate freq_scale_lin_effective based on padded range for grid drawing
+                current_freq_scale = svg_height / (max_freq_lin_padded - min_freq_lin_padded) if (max_freq_lin_padded - min_freq_lin_padded) > 0 else svg_height
+                y_offset_for_grid = -min_freq_lin_padded * current_freq_scale
+                
+                freq_major_interval = 100.0 # 100 Hz
+                freq_minor_interval = 10.0 # 10 Hz
+
+                current_freq_tick = np.floor(min_freq_lin_padded / freq_major_interval) * freq_major_interval
+                while current_freq_tick <= max_freq_lin_padded:
+                    y_pos = svg_height - (current_freq_tick * current_freq_scale + y_offset_for_grid)
+                    if 0 <= y_pos <= svg_height:
+                        dwg.add(dwg.line((0, y_pos), (svg_width, y_pos), stroke='grey', stroke_width=0.5, opacity=0.7))
+                        dwg.add(dwg.text(f"{current_freq_tick:.0f}Hz", insert=(3, y_pos - 3), fill='grey', font_size='8pt', text_anchor='start'))
+
+                    minor_freq = current_freq_tick + freq_minor_interval
+                    while minor_freq < current_freq_tick + freq_major_interval and minor_freq <= max_freq_lin_padded:
+                        y_minor_pos = svg_height - (minor_freq * current_freq_scale + y_offset_for_grid)
+                        if 0 <= y_minor_pos <= svg_height:
+                            dwg.add(dwg.line((0, y_minor_pos), (svg_width, y_minor_pos), stroke='lightgrey', stroke_width=0.2, opacity=0.5))
+                        minor_freq += freq_minor_interval
+                    current_freq_tick += freq_major_interval
+            
+            # These variables need to be reset to the original interpretation for harmonic plotting
+            # if background_grid was active, because the current_time_scale and current_freq_scale were adjusted for grid.
+            time_scale = svg_width / self.data.get_duration()
+            freq_scale = svg_height / (sr / 2) # Used for linear frequency mapping of harmonics
+            min_freq_log = np.log10(20) # Used for log frequency mapping of harmonics
+            max_freq_log = np.log10(sr/2) # Used for log frequency mapping of harmonics
+        else: # background_grid is False, use original mapping
+            time_scale = svg_width / self.data.get_duration()
+            freq_scale = svg_height / (sr / 2)
+            min_freq_log = np.log10(20)
+            max_freq_log = np.log10(sr/2)
+
+        max_stroke_width = 5
+        min_stroke_width = 0.1
 
         if not harmonic or len(harmonic) < 2:
             dwg.save()
@@ -959,55 +1288,4 @@ return project"""
 
         dwg.save()
 
-    def _save_waveform_svg(self, audio_data, output_path, sr=44100, svg_width=1000, svg_height=500, gain=1.0, max_points=5000, **kwargs):
-        import svgwrite
-        dwg = svgwrite.Drawing(output_path, profile='tiny')
-        dwg.viewbox(0, 0, svg_width, svg_height)
 
-        if len(audio_data) > max_points:
-            indices = np.linspace(0, len(audio_data) - 1, max_points, dtype=int)
-            audio_data = audio_data[indices]
-
-        num_samples = len(audio_data)
-        time_scale = svg_width / num_samples
-        
-        amps = np.abs(audio_data)
-        max_amp = np.max(amps)
-        min_amp = np.min(amps)
-
-        max_stroke_width = svg_height / 2.0
-        min_stroke_width = 0.1
-
-        scaled_stroke_widths = []
-        for amp in amps:
-            if max_amp > min_amp:
-                normalized_amp = (amp - min_amp) / (max_amp - min_amp)
-            else:
-                normalized_amp = 0
-            stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
-            scaled_stroke_widths.append(stroke_width * gain)
-
-        top_path_coords = []
-        bottom_path_coords = []
-        center_y = svg_height / 2.0
-
-        for i in range(num_samples):
-            x = i * time_scale
-            half_width = scaled_stroke_widths[i] / 2.0
-            y_top = center_y - half_width
-            y_bottom = center_y + half_width
-            top_path_coords.append((x, y_top))
-            bottom_path_coords.append((x, y_bottom))
-
-        path_d = f"M {top_path_coords[0][0]},{top_path_coords[0][1]} "
-        for p in top_path_coords[1:]:
-            path_d += f"L {p[0]},{p[1]} "
-        
-        path_d += f"L {bottom_path_coords[-1][0]},{bottom_path_coords[-1][1]} "
-        for p in reversed(bottom_path[:-1]):
-            path_d += f"L {p[0]},{p[1]} "
-        path_d += "Z"
-
-        dwg.add(dwg.path(d=path_d, stroke='none', fill=svgwrite.rgb(0, 0, 0, '%')))
-
-        dwg.save()
