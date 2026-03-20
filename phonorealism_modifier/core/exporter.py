@@ -361,6 +361,21 @@ return project"""
                         gray_val = int(val * 255)
                         return pg.mkColor((gray_val, gray_val, gray_val))
                 cmap = GreysColormap()
+            elif colormap_name == 'Greys (hueless, inverted)':
+                # Create an inverted grayscale colormap (white to black)
+                # Map 0 (min amplitude) to white (255,255,255) and 1 (max amplitude) to black (0,0,0)
+                class InvertedGreysColormap:
+                    def map(self, val, mode):
+                        # Apply a power function to make it ramp quicker to black (gamma correction)
+                        # val is typically from 0 (min amplitude) to 1 (max amplitude)
+                        # We want 0 to be white, and 1 to be black.
+                        # (1 - val) gives us 1 for min amplitude, 0 for max amplitude.
+                        # Raising (1 - val) to a power > 1 will make it decrease faster (darken quicker)
+                        # Let's try a power of 2.0
+                        adjusted_val = (1 - val)**1.0
+                        gray_val = int(adjusted_val * 75) # Scale to a lighter gray instead of pure white
+                        return pg.mkColor((gray_val, gray_val, gray_val))
+                cmap = InvertedGreysColormap()
             else:
                 cmap = pg.colormap.get(colormap_name)
 
@@ -520,6 +535,20 @@ return project"""
                         gray_val = int(val * 255)
                         return pg.mkColor((gray_val, gray_val, gray_val))
                 cmap = GreysColormap()
+            elif colormap_name == 'Greys (hueless, inverted)':
+                # Create an inverted grayscale colormap (white to black)
+                class InvertedGreysColormap:
+                    def map(self, val, mode):
+                        # Apply a power function to make it ramp quicker to black (gamma correction)
+                        # val is typically from 0 (min amplitude) to 1 (max amplitude)
+                        # We want 0 to be white, and 1 to be black.
+                        # (1 - val) gives us 1 for min amplitude, 0 for max amplitude.
+                        # Raising (1 - val) to a power > 1 will make it decrease faster (darken quicker)
+                        # Let's try a power of 2.0
+                        adjusted_val = (1 - val)**1.0
+                        gray_val = int(adjusted_val * 75) # Scale to a lighter gray instead of pure white
+                        return pg.mkColor((gray_val, gray_val, gray_val))
+                cmap = InvertedGreysColormap()
             else:
                 cmap = pg.colormap.get(colormap_name)
 

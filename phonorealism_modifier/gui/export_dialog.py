@@ -105,7 +105,7 @@ class ExportDialog(QDialog):
         svg_pitch_options_grid.addWidget(self.svg_pitch_full_checkbox, 1, 0)
         svg_pitch_options_grid.addWidget(self.svg_pitch_parts_checkbox, 1, 1)
         self.svg_pitch_colormap_combo = QComboBox()
-        self.svg_pitch_colormap_combo.addItems(['viridis', 'plasma', 'inferno', 'magma', 'cividis', 'Greys (hueless)'])
+        self.svg_pitch_colormap_combo.addItems(['viridis', 'plasma', 'inferno', 'magma', 'cividis', 'Greys (hueless)', 'Greys (hueless, inverted)'])
         self.svg_pitch_colormap_combo.setCurrentText('viridis') # Default selection
         svg_pitch_options_grid.addWidget(QLabel("Colormap:"), 3, 0) # Adjust row for new combo box
         svg_pitch_options_grid.addWidget(self.svg_pitch_colormap_combo, 3, 1, 1, 2) # Span 2 columns
