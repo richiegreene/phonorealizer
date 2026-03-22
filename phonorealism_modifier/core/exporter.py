@@ -282,20 +282,21 @@ return project"""
         colormap_enabled = kwargs_settings.pop('colormap', False)
         colormap_name = kwargs_settings.pop('colormap_name', 'viridis')
         background_grid_enabled = kwargs_settings.pop('background_grid', False)
+        line_width = kwargs_settings.pop('line_width', 1.0) # New parameter for line width
         
         if svg_settings['full']:
             if svg_settings['lin']:
-                self._save_full_svg(self.data.get_harmonics(), output_path + '_log.svg', scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, **kwargs_settings)
+                self._save_full_svg(self.data.get_harmonics(), output_path + '_log.svg', scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, line_width=line_width, **kwargs_settings)
             if svg_settings['log']:
-                self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, **kwargs_settings)
+                self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, line_width=line_width, **kwargs_settings)
         if svg_settings['parts']:
             output_dir = os.path.splitext(output_path)[0] + "_pitch_partials"
             os.makedirs(output_dir, exist_ok=True)
             for i, partial in enumerate(self.data.get_harmonics()):
                 if svg_settings['lin']:
-                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_lin.svg"), scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, **kwargs_settings)
+                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_lin.svg"), scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, line_width=line_width, **kwargs_settings)
                 if svg_settings['log']:
-                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_log.svg"), scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, **kwargs_settings)
+                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_log.svg"), scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, line_width=line_width, **kwargs_settings)
 
     def export_svg_amplitude(self, svg_settings, output_path):
         import svgwrite
@@ -385,7 +386,7 @@ return project"""
 
         dwg.save()
 
-    def _save_full_svg(self, partials, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', background_grid=False, **kwargs):
+    def _save_full_svg(self, partials, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', background_grid=False, line_width=1.0, **kwargs):
         import svgwrite
         dwg = svgwrite.Drawing(output_path, profile='tiny')
         dwg.viewbox(0, 0, svg_width, svg_height)
@@ -542,8 +543,8 @@ return project"""
             min_freq_log = np.log10(20)
             max_freq_log = np.log10(sr/2)
 
-        max_stroke_width = 5
-        min_stroke_width = 0.1
+        amplitude_render_max_stroke_width = 5
+        amplitude_render_min_stroke_width = 0.1
 
         cmap = None
         if colormap:
@@ -609,15 +610,19 @@ return project"""
                         normalized_amp = (amp_linear - min_linear_amp_segment) / (max_linear_amp_segment - min_linear_amp_segment)
                     else:
                         normalized_amp = 0
-                    stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
+                    stroke_width = amplitude_render_min_stroke_width + normalized_amp * (amplitude_render_max_stroke_width - amplitude_render_min_stroke_width)
                     stroke_width *= gain
                     stroke_widths.append(stroke_width)
                     normalized_amps_for_color.append(normalized_amp) # Use for color mapping
             else: # render_mode == 'line'
-                # If render_mode is 'line', use a constant stroke width
-                # But if colormap is enabled, we still need normalized amplitudes for color
+                # If colormap is enabled, the user's requested line_width should determine the polygon thickness.
+                # Otherwise (no colormap, just a plain line), use a default thin line.
                 for amp_linear in amps_linear:
-                    stroke_widths.append(min_stroke_width * gain)
+                    if colormap:
+                        stroke_widths.append(line_width * gain) 
+                    else:
+                        stroke_widths.append(amplitude_render_min_stroke_width * gain) # Default thin line
+
                     if max_linear_amp_segment > min_linear_amp_segment:
                         normalized_amp = (amp_linear - min_linear_amp_segment) / (max_linear_amp_segment - min_linear_amp_segment)
                     else:
@@ -705,7 +710,7 @@ return project"""
 
         dwg.save()
 
-    def _save_partial_svg(self, harmonic, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', background_grid=False, **kwargs):
+    def _save_partial_svg(self, harmonic, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', background_grid=False, line_width=1.0, **kwargs):
         import svgwrite
         dwg = svgwrite.Drawing(output_path, profile='tiny')
         dwg.viewbox(0, 0, svg_width, svg_height)
@@ -861,15 +866,15 @@ return project"""
             min_freq_log = np.log10(20)
             max_freq_log = np.log10(sr/2)
 
-        max_stroke_width = 5
-        min_stroke_width = 0.1
+        amplitude_render_max_stroke_width = 5
+        amplitude_render_min_stroke_width = 0.1
 
         if not harmonic or len(harmonic) < 2:
             dwg.save()
             return
 
-        max_stroke_width = 5
-        min_stroke_width = 0.1
+        amplitude_render_max_stroke_width = 5
+        amplitude_render_min_stroke_width = 0.1
 
         cmap = None
         if colormap:
@@ -929,13 +934,19 @@ return project"""
                     normalized_amp = (amp_linear - min_linear_amp_segment) / (max_linear_amp_segment - min_linear_amp_segment)
                 else:
                     normalized_amp = 0
-                stroke_width = min_stroke_width + normalized_amp * (max_stroke_width - min_stroke_width)
+                stroke_width = amplitude_render_min_stroke_width + normalized_amp * (amplitude_render_max_stroke_width - amplitude_render_min_stroke_width)
                 stroke_width *= gain
                 stroke_widths.append(stroke_width)
                 normalized_amps_for_color.append(normalized_amp) # Use for color mapping
         else: # render_mode == 'line'
+            # If colormap is enabled, the user's requested line_width should determine the polygon thickness.
+            # Otherwise (no colormap, just a plain line), use a default thin line.
             for amp_linear in amps_linear:
-                stroke_widths.append(min_stroke_width * gain)
+                if colormap:
+                    stroke_widths.append(line_width * gain) 
+                else:
+                    stroke_widths.append(amplitude_render_min_stroke_width * gain) # Default thin line
+
                 if max_linear_amp_segment > min_linear_amp_segment:
                     normalized_amp = (amp_linear - min_linear_amp_segment) / (max_linear_amp_segment - min_linear_amp_segment)
                 else:

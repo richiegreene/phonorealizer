@@ -106,6 +106,7 @@ class ExportDialog(QDialog):
         self.svg_pitch_height_input = QLineEdit("500")
         self.svg_pitch_gain_input = QLineEdit("1.00")
         self.svg_pitch_max_points_input = QLineEdit("5000")
+        self.svg_pitch_line_width_input = QLineEdit("1.0") # New Line Width input
 
         svg_pitch_options_grid = QGridLayout()
         svg_pitch_options_grid.setContentsMargins(0, 0, 0, 0)
@@ -135,6 +136,8 @@ class ExportDialog(QDialog):
         svg_pitch_options_grid.addWidget(self.svg_pitch_gain_input, 7, 1)
         svg_pitch_options_grid.addWidget(QLabel("Max Points:"), 8, 0)
         svg_pitch_options_grid.addWidget(self.svg_pitch_max_points_input, 8, 1)
+        svg_pitch_options_grid.addWidget(QLabel("Line Width:"), 9, 0) # New row for Line Width
+        svg_pitch_options_grid.addWidget(self.svg_pitch_line_width_input, 9, 1) # New Line Width input
 
         self.svg_pitch_layout.addLayout(svg_pitch_options_grid)
         self.svg_pitch_group.setLayout(self.svg_pitch_layout)
@@ -233,6 +236,7 @@ class ExportDialog(QDialog):
         self.svg_pitch_height_input.setEnabled(enabled)
         self.svg_pitch_gain_input.setEnabled(enabled)
         self.svg_pitch_max_points_input.setEnabled(enabled)
+        self.svg_pitch_line_width_input.setEnabled(enabled)
 
     def toggle_svg_amplitude_options(self, state):
         enabled = (state == 2) # Compare integer value
@@ -276,7 +280,8 @@ class ExportDialog(QDialog):
                 "line": self.svg_pitch_line_checkbox.isChecked(),
                 "colormap": self.svg_pitch_colormap_checkbox.isChecked(),
                 "colormap_name": self.svg_pitch_colormap_combo.currentText(),
-                "background_grid": self.svg_pitch_background_grid_checkbox.isChecked()
+                "background_grid": self.svg_pitch_background_grid_checkbox.isChecked(),
+                "line_width": float(self.svg_pitch_line_width_input.text())
             },
             "svg_amplitude": {
                 "export": self.svg_amplitude_export_checkbox.isChecked(),
