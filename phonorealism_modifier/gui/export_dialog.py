@@ -1,7 +1,6 @@
-import sys
 from PySide6.QtWidgets import (
     QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
-    QCheckBox, QPushButton, QLabel, QLineEdit, QGridLayout, QComboBox
+    QCheckBox, QPushButton, QLabel, QLineEdit, QGridLayout, QComboBox, QScrollArea
 )
 from PySide6.QtCore import Qt
 
@@ -11,8 +10,20 @@ class ExportDialog(QDialog):
         self.setWindowTitle("Export Options")
         self.setMinimumWidth(400)
 
-        self.layout = QVBoxLayout(self)
-        self.layout.setContentsMargins(10, 10, 10, 10) # Add some margin
+        # Main dialog layout
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(10, 10, 10, 10)
+        self.main_layout.setSpacing(10)
+
+        # Scroll Area for export options
+        self.scroll_area = QScrollArea(self)
+        self.scroll_area.setWidgetResizable(True)
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff) # Only vertical scrollbar
+
+        # Widget to contain all scrollable content
+        self.scroll_content_widget = QWidget()
+        self.layout = QVBoxLayout(self.scroll_content_widget) # Use self.layout for content inside scroll area
+        self.layout.setContentsMargins(0, 0, 0, 0) # No extra margins inside the scroll content
         self.layout.setSpacing(10) # Add some spacing between groups
 
         # CSV Export (no GroupBox for compactness)
@@ -174,6 +185,9 @@ class ExportDialog(QDialog):
         self.tessera_layout.addWidget(self.tessera_export_checkbox)
         self.tessera_group.setLayout(self.tessera_layout)
         self.layout.addWidget(self.tessera_group)
+        
+        self.scroll_area.setWidget(self.scroll_content_widget)
+        self.main_layout.addWidget(self.scroll_area)
 
         # Buttons
         self.button_box = QWidget()
@@ -184,7 +198,7 @@ class ExportDialog(QDialog):
         self.cancel_button.clicked.connect(self.reject)
         self.button_box_layout.addWidget(self.export_button)
         self.button_box_layout.addWidget(self.cancel_button)
-        self.layout.addWidget(self.button_box)
+        self.main_layout.addWidget(self.button_box)
 
         # Initial state setup
         self.toggle_wav_options(self.wav_export_checkbox.checkState())
