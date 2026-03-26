@@ -283,20 +283,23 @@ return project"""
         colormap_name = kwargs_settings.pop('colormap_name', 'viridis')
         background_grid_enabled = kwargs_settings.pop('background_grid', False)
         line_width = kwargs_settings.pop('line_width', 1.0) # New parameter for line width
+        # Extract width and height from svg_settings, providing defaults if not present
+        frontend_svg_width = kwargs_settings.pop('width', 1000)
+        frontend_svg_height = kwargs_settings.pop('height', 500)
         
         if svg_settings['full']:
             if svg_settings['lin']:
-                self._save_full_svg(self.data.get_harmonics(), output_path + '_log.svg', scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, line_width=line_width, **kwargs_settings)
+                self._save_full_svg(self.data.get_harmonics(), output_path + '_log.svg', scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, line_width=line_width, svg_width=frontend_svg_width, svg_height=frontend_svg_height, **kwargs_settings)
             if svg_settings['log']:
-                self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, line_width=line_width, **kwargs_settings)
+                self._save_full_svg(self.data.get_harmonics(), output_path + '_lin.svg', scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, line_width=line_width, svg_width=frontend_svg_width, svg_height=frontend_svg_height, **kwargs_settings)
         if svg_settings['parts']:
             output_dir = os.path.splitext(output_path)[0] + "_pitch_partials"
             os.makedirs(output_dir, exist_ok=True)
             for i, partial in enumerate(self.data.get_harmonics()):
                 if svg_settings['lin']:
-                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_lin.svg"), scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, line_width=line_width, **kwargs_settings)
+                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_lin.svg"), scale='lin', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, line_width=line_width, svg_width=frontend_svg_width, svg_height=frontend_svg_height, **kwargs_settings)
                 if svg_settings['log']:
-                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_log.svg"), scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, line_width=line_width, **kwargs_settings)
+                    self._save_partial_svg(partial, os.path.join(output_dir, f"partial_{i+1}_log.svg"), scale='log', render_mode=render_mode, colormap=colormap_enabled, colormap_name=colormap_name, background_grid=background_grid_enabled, line_width=line_width, svg_width=frontend_svg_width, svg_height=frontend_svg_height, **kwargs_settings)
 
     def export_svg_amplitude(self, svg_settings, output_path):
         import svgwrite
@@ -386,7 +389,7 @@ return project"""
 
         dwg.save()
 
-    def _save_full_svg(self, partials, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', background_grid=False, line_width=1.0, **kwargs):
+    def _save_full_svg(self, partials, output_path, svg_width, svg_height, sr=44100, scale='log', gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', background_grid=False, line_width=1.0, **kwargs):
         import svgwrite
         dwg = svgwrite.Drawing(output_path, profile='tiny')
         dwg.viewbox(0, 0, svg_width, svg_height)
@@ -687,7 +690,7 @@ return project"""
 
         dwg.save()
 
-    def _save_partial_svg(self, harmonic, output_path, sr=44100, scale='log', svg_width=1000, svg_height=500, gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', background_grid=False, line_width=1.0, **kwargs):
+    def _save_partial_svg(self, harmonic, output_path, svg_width, svg_height, sr=44100, scale='log', gain=1.0, render_mode='amplitude', colormap=False, colormap_name='viridis', background_grid=False, line_width=1.0, **kwargs):
         import svgwrite
         dwg = svgwrite.Drawing(output_path, profile='tiny')
         dwg.viewbox(0, 0, svg_width, svg_height)
