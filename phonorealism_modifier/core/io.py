@@ -19,6 +19,9 @@ class HarmonicData:
         required_cols = {'time', 'harmonic_index', 'frequency', 'amplitude'}
         if not required_cols.issubset(self.df.columns):
             raise ValueError(f"CSV missing required columns: {required_cols - set(self.df.columns)}")
+        # Multiply frequencies by 2 to raise by an octave
+        self.df['frequency'] = self.df['frequency'] * 2
+        self.original_df['frequency'] = self.original_df['frequency'] * 2
         self.grouped = {idx: group.sort_values('time') for idx, group in self.df.groupby('harmonic_index')}
         self._modified = True
 
