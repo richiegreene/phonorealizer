@@ -9,3 +9,4 @@ svgwrite
 scipy
 mido
 python-rtmidi
+python-osc

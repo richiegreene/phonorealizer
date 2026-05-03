@@ -1,5 +1,5 @@
 from PySide6.QtWidgets import (
-    QMainWindow, QToolBar, QSplitter, QWidget, QVBoxLayout, QInputDialog
+    QMainWindow, QToolBar, QSplitter, QWidget, QVBoxLayout, QInputDialog, QMessageBox
 )
 from PySide6.QtGui import QAction
 from PySide6.QtCore import Qt, QUrl, QTemporaryFile
@@ -13,6 +13,10 @@ import librosa
 from .audio_io_dialog import AudioIODialog
 from .wavetable_dialog import WavetableDialog
 from phonorealism_extractor.core.synthesizer import synthesize_from_partials, db_to_linear
+from pythonosc import dispatcher
+from pythonosc import osc_server
+from pythonosc.udp_client import SimpleUDPClient
+import threading
 
 class PerformWindow(QMainWindow):
     def __init__(self, data, parent=None):
@@ -42,6 +46,17 @@ class PerformWindow(QMainWindow):
         self.is_log_scale = False # Initial scale for frequency plots is linear
         self.last_wavetable_preset = "Basic Shapes"
         self.last_wavetable_value = 0
+
+        # OSC Server setup for F9 sync from Ableton to this app
+        self.osc_port = 5005
+        self.osc_server_thread = None
+        self.osc_running = True
+        self.setup_osc_server()
+
+        # OSC Client setup for sending F9 / record trigger to Ableton
+        self.osc_client_ip = "127.0.0.1"
+        self.osc_client_port = 5006
+        self.osc_client = SimpleUDPClient(self.osc_client_ip, self.osc_client_port)
 
         self._init_ui()
 
@@ -74,6 +89,10 @@ class PerformWindow(QMainWindow):
         sync_action = QAction("Sync", self)
         sync_action.triggered.connect(self.sync_plots)
         self.toolbar.addAction(sync_action)
+
+        osc_config_action = QAction("OSC Config", self)
+        osc_config_action.triggered.connect(self.show_osc_config)
+        self.toolbar.addAction(osc_config_action)
 
         time_zoom_in_action = QAction("Time (-)", self)
         time_zoom_in_action.triggered.connect(self.time_zoom_in)
@@ -185,6 +204,32 @@ class PerformWindow(QMainWindow):
         if not hasattr(self, 'wavetable_dialog') or self.wavetable_dialog is None:
             self.wavetable_dialog = WavetableDialog(self)
         self.wavetable_dialog.show()
+
+    def show_osc_config(self):
+        """Show OSC configuration information for Ableton Live integration"""
+        config_info = f"""OSC Configuration for Ableton Live Integration
+
+This application both listens for and sends OSC messages for F9 sync.
+
+Incoming OSC (Ableton -> Perform Window):
+- Address: 127.0.0.1 (localhost)
+- Port: {self.osc_port}
+- Messages: /f9 or /trigger/play
+
+Outgoing OSC (Perform Window -> Ableton):
+- Address: 127.0.0.1 (localhost)
+- Port: {self.osc_client_port}
+- Messages sent on Play: /f9 and /trigger/record
+
+To set up in Ableton Live:
+1. Ensure Ableton has OSC support (via Max for Live, a Control Surface, or a third-party script)
+2. Configure Ableton to send OSC to: 127.0.0.1:{self.osc_port} for incoming sync
+3. Configure Ableton to receive OSC on: 127.0.0.1:{self.osc_client_port}
+4. Map Ableton's F9 record trigger to the incoming /f9 or /trigger/record message
+
+Note: Make sure Ableton and this application are running on the same machine or on the same local network."""
+        
+        QMessageBox.information(self, "OSC Configuration", config_info)
 
     def update_log_lin_button_text(self):
         if self.is_log_scale:
@@ -368,6 +413,7 @@ class PerformWindow(QMainWindow):
             self.media_player.play()
             self.play_pause_action.setText("Pause")
             self.play_pause_action.setChecked(True)
+            self.send_osc_play_trigger()
 
     def stop_playback(self):
         self.play_pause_action.setChecked(False)
@@ -484,3 +530,45 @@ class PerformWindow(QMainWindow):
             self.toggle_playback()
         else:
             super().keyPressEvent(event)
+
+    def setup_osc_server(self):
+        """Set up the OSC server to listen for F9 trigger messages from Ableton Live"""
+        def run_osc_server():
+            disp = dispatcher.Dispatcher()
+            disp.map("/f9", self.handle_f9_trigger)
+            disp.map("/trigger/play", self.handle_f9_trigger)  # Alternative address
+            
+            server = osc_server.ThreadingOSCUDPServer(("127.0.0.1", self.osc_port), disp)
+            print(f"OSC Server started on port {self.osc_port}, listening for /f9 and /trigger/play")
+            
+            # Server runs in a loop until self.osc_running is False
+            while self.osc_running:
+                server.handle_request()
+            
+            server.server_close()
+        
+        # Start OSC server in a separate thread
+        self.osc_server_thread = threading.Thread(target=run_osc_server, daemon=True)
+        self.osc_server_thread.start()
+
+    def handle_f9_trigger(self, address, *args):
+        """Handle F9 trigger message from OSC"""
+        print(f"F9 trigger received from OSC: {address}")
+        # Trigger play button from the main thread
+        self.toggle_playback()
+
+    def send_osc_play_trigger(self):
+        """Send an OSC message to Ableton when Play is pressed."""
+        try:
+            self.osc_client.send_message("/f9", 1)
+            self.osc_client.send_message("/trigger/record", 1)
+            print(f"Sent OSC record trigger to Ableton at {self.osc_client_ip}:{self.osc_client_port}")
+        except Exception as e:
+            print(f"Failed to send OSC trigger to Ableton: {e}")
+
+    def closeEvent(self, event):
+        """Clean up OSC server when window is closed"""
+        self.osc_running = False
+        if self.osc_server_thread:
+            self.osc_server_thread.join(timeout=1)
+        super().closeEvent(event)
