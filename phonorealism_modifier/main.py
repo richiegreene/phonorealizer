@@ -1,4 +1,8 @@
 import sys
+import os
+# Ensure the current directory is in the path so gui module can be imported
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from PySide6.QtWidgets import QApplication
 from PySide6.QtGui import QPalette, QColor
 from gui.main_window import MainWindow
