@@ -37,7 +37,12 @@ class HarmonicData:
 
     def export_csv(self, filepath):
         if self.df is not None:
-            self.df.to_csv(filepath, index=False)
+            # Create a temporary copy of the DataFrame for export
+            df_to_export = self.df.copy()
+            # Divide frequencies by two for the export
+            if 'frequency' in df_to_export.columns:
+                df_to_export['frequency'] = df_to_export['frequency'] / 2
+            df_to_export.to_csv(filepath, index=False)
 
     def get_duration(self):
         if self.df is not None and not self.df.empty:
