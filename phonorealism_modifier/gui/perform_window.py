@@ -23,6 +23,7 @@ class PerformWindow(QMainWindow):
         super().__init__(parent)
         self.data = data
         self.setWindowTitle("Perform")
+        self.setWindowFlag(Qt.WindowStaysOnTopHint, True)
         self.resize(1200, 800)
         self.input_device = None
         self.output_device = None
