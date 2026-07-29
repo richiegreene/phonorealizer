@@ -119,9 +119,20 @@
           <span id="spanLabel">Pitch span</span>
           <input type="range" id="pitchSpan" min="25" max="1200" step="25" value="150" />
         </label>
+        <label class="field">
+          <span id="ribbonLabel">Ribbon thickness</span>
+          <input type="range" id="ribbonScale" min="6" max="140" step="2" value="46" />
+        </label>
         <div class="row wrap">
+          <button class="sm" id="notationBtn">Notation: ribbon</button>
           <button class="sm" id="modeBtn">Mode: range</button>
           <button class="sm" id="ensembleBtn">Ensemble lines: off</button>
+        </div>
+        <div class="hint" style="margin-top: 10px">
+          <strong>Ribbon</strong> draws your part as it appears in justidraw —
+          height is pitch, thickness is amplitude — and your microphone is drawn
+          the same way over it, so matching means covering the shape.
+          <strong>Panes</strong> separates pitch above from amplitude below.
         </div>
       </div>
 

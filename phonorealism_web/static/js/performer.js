@@ -47,6 +47,9 @@ const el = {
   pitchSpan: $('pitchSpan'),
   spanLabel: $('spanLabel'),
   modeBtn: $('modeBtn'),
+  notationBtn: $('notationBtn'),
+  ribbonScale: $('ribbonScale'),
+  ribbonLabel: $('ribbonLabel'),
   ensembleBtn: $('ensembleBtn'),
   band: $('band'),
   bandLabel: $('bandLabel'),
@@ -482,6 +485,18 @@ el.modeBtn.onclick = () => {
   el.modeBtn.textContent = `Mode: ${view.pitchMode}`;
 };
 
+el.notationBtn.onclick = () => {
+  view.notation = view.notation === 'ribbon' ? 'panes' : 'ribbon';
+  el.notationBtn.textContent = `Notation: ${view.notation}`;
+  // Thickness only means anything in ribbon mode.
+  el.ribbonScale.disabled = view.notation !== 'ribbon';
+};
+
+el.ribbonScale.oninput = () => {
+  view.ribbonScale = parseFloat(el.ribbonScale.value);
+  el.ribbonLabel.textContent = `Ribbon thickness — ${view.ribbonScale} px at your loudest`;
+};
+
 el.ensembleBtn.onclick = () => {
   view.showEnsemble = !view.showEnsemble;
   el.ensembleBtn.textContent = `Ensemble lines: ${view.showEnsemble ? 'on' : 'off'}`;
@@ -654,6 +669,7 @@ for (const fn of [
   el.band.oninput,
   el.inputGain.oninput,
   el.timbre.oninput,
+  el.ribbonScale.oninput,
 ]) {
   fn();
 }

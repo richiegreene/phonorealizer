@@ -23,8 +23,13 @@ const COLORS = {
   gridStrong: '#252c35',
   score: '#4da3ff',
   scoreFill: 'rgba(77, 163, 255, 0.16)',
+  // The notated ribbon reads as the printed part: near-white and solid, as in
+  // justidraw and the SVG exports. The live ribbon sits over it, translucent
+  // so both remain legible where they overlap.
+  scoreRibbon: '#dbe7f3',
   ensemble: 'rgba(120, 140, 165, 0.30)',
   live: '#ffb648',
+  liveFill: 'rgba(255, 168, 40, 0.62)',
   liveWeak: 'rgba(255, 182, 72, 0.28)',
   now: '#ff4d6d',
   text: '#8b98a8',
@@ -59,6 +64,19 @@ export class PerformanceView {
      */
     this.pitchMode = 'range';
     this.showEnsemble = false;
+
+    /**
+     * 'ribbon' draws the part the way justidraw and the modifier's SVG export
+     * draw it: one shape whose vertical position is pitch and whose *thickness*
+     * is amplitude, tapering to nothing as a partial dies away. 'panes' keeps
+     * pitch and amplitude in separate stacked plots.
+     *
+     * Ribbon is the default because it is the notation these parts were
+     * composed in — a player already reading justidraw sees the same object.
+     */
+    this.notation = 'ribbon';
+    /** Ribbon thickness in pixels at the part's loudest point. */
+    this.ribbonScale = 46;
 
     this.time = 0;
     this.live = []; // {t, cents, amp, conf}
@@ -129,7 +147,22 @@ export class PerformanceView {
   }
 
   get pitchHeight() {
-    return this.h * PITCH_FRACTION;
+    // A ribbon carries amplitude in its own thickness, so there is no second
+    // pane to leave room for — the pitch axis gets the whole screen, and with
+    // it a good deal more vertical resolution.
+    return this.notation === 'ribbon' ? this.h : this.h * PITCH_FRACTION;
+  }
+
+  /**
+   * The amplitude that maps to full ribbon thickness: the loudest point of the
+   * performer's own part. Scaling to the part rather than to an absolute 1.0
+   * matters because a high partial's normalised magnitude may peak around 0.1,
+   * which would otherwise render as a permanently invisible thread.
+   */
+  _ampRef() {
+    let m = 0;
+    for (const p of this.partials) m = Math.max(m, p.aMax);
+    return m > 1e-6 ? m : 1;
   }
 
   get ampTop() {
@@ -229,18 +262,29 @@ export class PerformanceView {
     g.beginPath();
     g.rect(0, 0, this.w, this.pitchHeight);
     g.clip();
-    if (this.showEnsemble) this._drawPartials(this.others, COLORS.ensemble, 1, false);
-    this._drawPartials(this.partials, COLORS.score, 2.2, true);
-    this._drawLivePitch();
+    if (this.notation === 'ribbon') {
+      const ampRef = this._ampRef();
+      if (this.showEnsemble) {
+        this._drawPartialsRibbon(this.others, COLORS.ensemble, ampRef, false);
+      }
+      this._drawPartialsRibbon(this.partials, COLORS.scoreRibbon, ampRef, true);
+      this._drawLiveRibbon(ampRef);
+    } else {
+      if (this.showEnsemble) this._drawPartials(this.others, COLORS.ensemble, 1, false);
+      this._drawPartials(this.partials, COLORS.score, 2.2, true);
+      this._drawLivePitch();
+    }
     g.restore();
 
-    g.save();
-    g.beginPath();
-    g.rect(0, this.ampTop, this.w, this.ampHeight);
-    g.clip();
-    this._drawAmplitudeScore();
-    this._drawLiveAmplitude();
-    g.restore();
+    if (this.notation !== 'ribbon') {
+      g.save();
+      g.beginPath();
+      g.rect(0, this.ampTop, this.w, this.ampHeight);
+      g.clip();
+      this._drawAmplitudeScore();
+      this._drawLiveAmplitude();
+      g.restore();
+    }
 
     this._drawNowLine();
     this._drawReadout();
@@ -250,12 +294,14 @@ export class PerformanceView {
   _drawGrid() {
     const g = this.ctx;
 
-    g.strokeStyle = COLORS.paneEdge;
-    g.lineWidth = 1;
-    g.beginPath();
-    g.moveTo(0, this.ampTop - 0.5);
-    g.lineTo(this.w, this.ampTop - 0.5);
-    g.stroke();
+    if (this.notation !== 'ribbon') {
+      g.strokeStyle = COLORS.paneEdge;
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(0, this.ampTop - 0.5);
+      g.lineTo(this.w, this.ampTop - 0.5);
+      g.stroke();
+    }
 
     // Semitone lines in the pitch pane — the reference a performer actually
     // reads intonation against.
@@ -287,13 +333,15 @@ export class PerformanceView {
       g.stroke();
     }
 
-    // Amplitude centre line.
-    g.strokeStyle = COLORS.grid;
-    const mid = Math.round(this.ampTop + this.ampHeight / 2) + 0.5;
-    g.beginPath();
-    g.moveTo(0, mid);
-    g.lineTo(this.w, mid);
-    g.stroke();
+    if (this.notation !== 'ribbon') {
+      // Amplitude centre line.
+      g.strokeStyle = COLORS.grid;
+      const mid = Math.round(this.ampTop + this.ampHeight / 2) + 0.5;
+      g.beginPath();
+      g.moveTo(0, mid);
+      g.lineTo(this.w, mid);
+      g.stroke();
+    }
   }
 
   /** Visible time bounds, with a margin so lines enter cleanly. */
@@ -350,6 +398,166 @@ export class PerformanceView {
       g.stroke();
       g.shadowBlur = 0;
     }
+  }
+
+  /**
+   * Fill one ribbon: a centreline offset perpendicularly by half its width at
+   * each point.
+   *
+   * This is the same construction the modifier's SVG exporter uses for its
+   * pitch plots. The tangent at an interior point is the sum of the normalised
+   * incoming and outgoing directions, which bisects the corner — offsetting
+   * along that bisector keeps the two edges parallel through a bend instead of
+   * pinching on the inside of it.
+   *
+   * @param {Array<[number,number,number]>} pts [x, y, width] triples
+   */
+  _fillRibbon(pts, fill) {
+    const n = pts.length;
+    if (n < 2) return;
+    const g = this.ctx;
+
+    // Smooth the width channel before offsetting.
+    //
+    // The display samples at roughly one point per two pixels, which at normal
+    // zoom lands close to the score's own 11.6 ms analysis frame. Sampling a
+    // noisy per-frame amplitude at nearly its own rate aliases that noise into
+    // a coarse sawtooth along the ribbon edge — an artefact of the analysis
+    // resolution, not something the composer wrote. A short moving average
+    // removes it while leaving the envelope's actual shape intact.
+    const R = 2; // half-window, i.e. 5 samples
+    const wSm = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      let sum = 0;
+      let count = 0;
+      for (let k = i - R; k <= i + R; k++) {
+        if (k < 0 || k >= n) continue;
+        sum += pts[k][2];
+        count++;
+      }
+      wSm[i] = sum / count;
+    }
+
+    const top = new Array(n);
+    const bottom = new Array(n);
+    for (let i = 0; i < n; i++) {
+      let tx;
+      let ty;
+      if (i === 0) {
+        tx = pts[1][0] - pts[0][0];
+        ty = pts[1][1] - pts[0][1];
+      } else if (i === n - 1) {
+        tx = pts[i][0] - pts[i - 1][0];
+        ty = pts[i][1] - pts[i - 1][1];
+      } else {
+        const ax = pts[i][0] - pts[i - 1][0];
+        const ay = pts[i][1] - pts[i - 1][1];
+        const bx = pts[i + 1][0] - pts[i][0];
+        const by = pts[i + 1][1] - pts[i][1];
+        const la = Math.hypot(ax, ay) || 1;
+        const lb = Math.hypot(bx, by) || 1;
+        tx = ax / la + bx / lb;
+        ty = ay / la + by / lb;
+      }
+      let len = Math.hypot(tx, ty);
+      if (len < 1e-6) {
+        tx = 1;
+        ty = 0;
+        len = 1;
+      }
+      // Perpendicular to the tangent.
+      const nx = -ty / len;
+      const ny = tx / len;
+      const half = wSm[i] / 2;
+      top[i] = [pts[i][0] + nx * half, pts[i][1] + ny * half];
+      bottom[i] = [pts[i][0] - nx * half, pts[i][1] - ny * half];
+    }
+
+    g.beginPath();
+    g.moveTo(top[0][0], top[0][1]);
+    for (let i = 1; i < n; i++) g.lineTo(top[i][0], top[i][1]);
+    for (let i = n - 1; i >= 0; i--) g.lineTo(bottom[i][0], bottom[i][1]);
+    g.closePath();
+    g.fillStyle = fill;
+    g.fill();
+  }
+
+  /** Draw notated partials as justidraw-style ribbons. */
+  _drawPartialsRibbon(partials, fill, ampRef, glow) {
+    const g = this.ctx;
+    const [tA, tB] = this._bounds();
+    const px = this.w / this.window;
+    const dt = Math.max(0.002, 2 / px);
+    const limit = this.h * 3;
+
+    if (glow) {
+      g.shadowColor = fill;
+      g.shadowBlur = 10;
+    }
+    for (const p of partials) {
+      if (p.t1 < tA || p.t0 > tB) continue;
+      let run = [];
+      let cursor = 0;
+      const flush = () => {
+        if (run.length >= 2) this._fillRibbon(run, fill);
+        run = [];
+      };
+      for (let t = Math.max(tA, p.t0); t <= Math.min(tB, p.t1); t += dt) {
+        const s = sampleForRender(p, t, cursor);
+        if (!s) continue;
+        cursor = s.i;
+        if (!(s.f > 0)) {
+          flush();
+          continue;
+        }
+        const y = this.yForCents(1200 * Math.log2(s.f / 440));
+        if (y < -limit || y > limit) {
+          flush();
+          continue;
+        }
+        // A silent point tapers to a hairline rather than vanishing, so the
+        // line stays followable through a rest.
+        const w = 0.6 + (Math.max(0, s.a) / ampRef) * this.ribbonScale;
+        run.push([this.xFor(t), y, w]);
+      }
+      flush();
+    }
+    g.shadowBlur = 0;
+  }
+
+  /**
+   * The performer's own sound, drawn in the same language as the notation so
+   * that matching is a matter of overlaying one shape on another — both the
+   * contour and the thickness have to agree.
+   */
+  _drawLiveRibbon(ampRef) {
+    const g = this.ctx;
+    const [tA, tB] = this._bounds();
+    const limit = this.h * 3;
+    let run = [];
+    const flush = () => {
+      if (run.length >= 2) this._fillRibbon(run, COLORS.liveFill);
+      run = [];
+    };
+
+    g.shadowColor = COLORS.live;
+    g.shadowBlur = 6;
+    for (const s of this.live) {
+      if (s.t < tA || s.t > tB) continue;
+      if (s.cents == null || s.conf < 0.15) {
+        flush();
+        continue;
+      }
+      const y = this.yForCents(s.cents);
+      if (y < -limit || y > limit) {
+        flush();
+        continue;
+      }
+      const w = 0.6 + (Math.max(0, s.amp) / ampRef) * this.ribbonScale;
+      run.push([this.xFor(s.t), y, w]);
+    }
+    flush();
+    g.shadowBlur = 0;
   }
 
   /** The notated dynamic, as the mirrored envelope used across this project. */
