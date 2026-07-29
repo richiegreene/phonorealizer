@@ -21,6 +21,11 @@
  * on one player's part or on everybody's at once.
  */
 
+/**
+ * Scope for a mark or a break that belongs to the whole work rather than one
+ * player's part. Called "Full Score" throughout the interface, matching the
+ * layout it applies to.
+ */
 export const GLOBAL = '*';
 
 /**
@@ -97,6 +102,10 @@ export function makeProject(score = null, parts = null) {
   return {
     v: 1,
     kind: 'phonorealism-engraving',
+    /** System and page breaks; see layout.js. */
+    breaks: [],
+    /** Note spacing, staff spacing and page furniture; see layout.js. */
+    layout: null,
     score: score
       ? {
           name: score.name,

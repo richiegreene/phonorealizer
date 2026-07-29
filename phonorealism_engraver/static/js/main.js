@@ -1,18 +1,21 @@
 /*
  * main.js — engraver application wiring.
  *
- * The score is read in the browser by the shared reader, exactly as the
- * conductor page reads it, so partial numbering is guaranteed identical
- * between the two applications. The engraver owns the part map; the conductor
- * imports what this writes.
+ * Organised as Setup / Write / Engrave, following Dorico: what you are doing
+ * decides what the panel offers. Setup names the parts, Write places the marks,
+ * Engrave controls spacing, breaks and page furniture.
+ *
+ * The score is read by the shared reader, exactly as the conductor page reads
+ * it, so partial numbering is guaranteed identical between the applications.
  */
 
 import { loadScoreFile, defaultParts, partLabel } from '/shared/score.js';
 import {
   GLOBAL, KINDS, KIND_ORDER, makeProject, validate,
   addAnnotation, removeAnnotation, updateAnnotation, explodeToParts,
-  allSorted, toPartMap, fromPartMap,
+  allSorted, toPartMap,
 } from '/shared/annotations.js';
+import { defaultLayout, addBreak, removeBreak, orderedParts } from '/shared/layout.js';
 import { EngraveCanvas } from './canvas.js';
 import { openPrintView, downloadSVG } from './print.js';
 
@@ -25,9 +28,29 @@ const state = {
   editingId: null,
   pendingPlace: null,
   dirty: false,
+  mode: 'export', // or 'print', for the shared dialogue
 };
 
 const sheet = new EngraveCanvas($('sheet'));
+
+/** Layout settings live on the project so they save with it. */
+function layout() {
+  if (!state.project.layout) state.project.layout = defaultLayout();
+  return state.project.layout;
+}
+
+/* ------------------------------------------------------------------ *
+ * Tabs
+ * ------------------------------------------------------------------ */
+
+for (const tab of document.querySelectorAll('.tab')) {
+  tab.onclick = () => {
+    for (const t of document.querySelectorAll('.tab')) t.classList.toggle('active', t === tab);
+    for (const p of document.querySelectorAll('.tabpane')) {
+      p.classList.toggle('hidden', p.dataset.pane !== tab.dataset.tab);
+    }
+  };
+}
 
 /* ------------------------------------------------------------------ *
  * Score loading
@@ -41,10 +64,11 @@ $('scoreFile').onchange = async () => {
   try {
     const score = await loadScoreFile(file);
     state.score = score;
-    // Keep an existing part map if one is loaded — the point of canonical
-    // numbering is that a map survives a re-export of the same music.
     if (!state.project.parts.length) {
-      state.project = makeProject(score, defaultParts(score).map(stripAuto));
+      const p = makeProject(score, defaultParts(score).map(stripAuto));
+      p.layout = layout();
+      p.breaks = state.project.breaks || [];
+      state.project = p;
     } else {
       state.project.score = makeProject(score).score;
     }
@@ -62,10 +86,6 @@ $('scoreFile').onchange = async () => {
 
 const stripAuto = (p) => ({ id: p.id, name: p.name, partials: p.partials });
 
-/* ------------------------------------------------------------------ *
- * Issues banner
- * ------------------------------------------------------------------ */
-
 function showIssues(issues) {
   const box = $('issues');
   if (!issues.length) {
@@ -75,12 +95,12 @@ function showIssues(issues) {
   }
   box.classList.remove('hidden');
   box.innerHTML = issues
-    .map((i) => `<div class="${i.level === 'warn' ? 'warn' : ''}">${i.message}</div>`)
+    .map((i) => `<div class="${i.level === 'warn' ? 'warn' : ''}">${escapeHtml(i.message)}</div>`)
     .join('');
 }
 
 /* ------------------------------------------------------------------ *
- * Parts
+ * Setup — parts
  * ------------------------------------------------------------------ */
 
 $('autoParts').onclick = () => {
@@ -126,10 +146,10 @@ function renderParts() {
     box.innerHTML = '<div class="hint">No parts yet.</div>';
     return;
   }
-  for (const part of state.project.parts) {
+  // Listed in the order they appear on the page, so the panel matches the score.
+  for (const part of orderedParts(state.project.parts, layout())) {
     const row = document.createElement('div');
     row.className = 'item';
-
     const grow = document.createElement('div');
     grow.className = 'grow';
     const nm = document.createElement('div');
@@ -148,7 +168,6 @@ function renderParts() {
       if (s && state.score) part.partials = parseSpec(s, state.score.partials.length);
       touched();
     };
-
     const del = document.createElement('button');
     del.className = 'sm';
     del.textContent = '✕';
@@ -157,32 +176,42 @@ function renderParts() {
       state.project.parts = state.project.parts.filter((p) => p !== part);
       touched();
     };
-
     row.append(grow, del);
     box.append(row);
   }
 }
 
-function renderSoloSelect() {
-  const sel = $('soloPart');
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">All parts</option>';
-  for (const p of state.project.parts) {
-    const o = document.createElement('option');
-    o.value = p.id;
-    o.textContent = `Only: ${p.name}`;
-    sel.append(o);
-  }
-  sel.value = cur;
-}
-
-$('soloPart').onchange = () => {
-  sheet.soloPart = $('soloPart').value || null;
-  sheet.draw();
+$('lowestAtBottom').onchange = () => {
+  layout().lowestAtBottom = $('lowestAtBottom').checked;
+  touched();
 };
 
 /* ------------------------------------------------------------------ *
- * Annotations
+ * Target selector — "Full Score" or a bare part name
+ * ------------------------------------------------------------------ */
+
+function renderTargetSelect() {
+  const sel = $('targetSelect');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="score">Full Score</option>';
+  for (const p of orderedParts(state.project.parts, layout())) {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.name;
+    sel.append(o);
+  }
+  sel.value = cur && [...sel.options].some((o) => o.value === cur) ? cur : 'score';
+  sheet.target = sel.value;
+}
+
+$('targetSelect').onchange = () => {
+  sheet.target = $('targetSelect').value;
+  sheet.draw();
+  renderBreaks();
+};
+
+/* ------------------------------------------------------------------ *
+ * Write — annotations
  * ------------------------------------------------------------------ */
 
 sheet.addEventListener('place', (ev) => {
@@ -190,7 +219,6 @@ sheet.addEventListener('place', (ev) => {
   state.pendingPlace = ev.detail;
   openModal(null);
 });
-
 sheet.addEventListener('edit', (ev) => openModal(ev.detail));
 sheet.addEventListener('select', (ev) => {
   state.editingId = ev.detail;
@@ -203,8 +231,18 @@ sheet.addEventListener('edited', () => {
   renderMarks();
 });
 
+function scopeOptions(selectEl, selected) {
+  selectEl.innerHTML = `<option value="${GLOBAL}">Full Score</option>`;
+  for (const p of orderedParts(state.project.parts, layout())) {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.name;
+    selectEl.append(o);
+  }
+  if (selected) selectEl.value = selected;
+}
+
 function openModal(id) {
-  const m = $('modal');
   const a = id ? state.project.annotations.find((x) => x.id === id) : null;
   state.editingId = id;
 
@@ -212,14 +250,11 @@ function openModal(id) {
   $('mKind').innerHTML = KIND_ORDER.map(
     (k) => `<option value="${k}">${KINDS[k].label}</option>`
   ).join('');
-  $('mScope').innerHTML =
-    `<option value="${GLOBAL}">All parts at once</option>` +
-    state.project.parts.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+  scopeOptions($('mScope'), a ? a.scope : state.pendingPlace?.partId || GLOBAL);
 
   if (a) {
     $('mText').value = a.text;
     $('mKind').value = a.kind;
-    $('mScope').value = a.scope;
     $('mTime').value = a.t.toFixed(2);
     $('mTime2').value = a.t2 == null ? '' : a.t2.toFixed(2);
     $('mPlace').value = a.place;
@@ -227,22 +262,15 @@ function openModal(id) {
     const p = state.pendingPlace;
     $('mText').value = '';
     $('mKind').value = 'lyric';
-    $('mScope').value = p ? p.partId : GLOBAL;
     $('mTime').value = (p ? p.t : 0).toFixed(2);
     $('mTime2').value = '';
-    $('mPlace').value = KINDS.lyric.place;
+    $('mPlace').value = 'on';
   }
   $('mDelete').classList.toggle('hidden', !a);
   $('mExplode').classList.toggle('hidden', !a || a.scope !== GLOBAL);
-
-  m.classList.remove('hidden');
+  $('modal').classList.remove('hidden');
   $('mText').focus();
 }
-
-$('mKind').onchange = () => {
-  const def = KINDS[$('mKind').value];
-  if (def) $('mPlace').value = def.place;
-};
 
 $('mSave').onclick = () => {
   const text = $('mText').value.trim();
@@ -259,8 +287,13 @@ $('mSave').onclick = () => {
     updateAnnotation(state.project, state.editingId, spec);
   } else {
     const a = addAnnotation(state.project, spec);
-    // Place it where the click landed, as an offset from the sounding line.
-    if (state.pendingPlace) a.dy = 0;
+    // Land the mark exactly where it was clicked. The offset is stored in cents
+    // from the sounding line, so it holds its position as the view rescales.
+    const p = state.pendingPlace;
+    if (p && Number.isFinite(p.cents)) {
+      const band = bandCentsAt(p.partId, spec.t);
+      a.dy = band == null ? 0 : p.cents - band;
+    }
     state.editingId = a.id;
     sheet.selectedId = a.id;
   }
@@ -269,6 +302,28 @@ $('mSave').onclick = () => {
   touched();
 };
 
+/** Pitch of the loudest partial of a part at time t, in cents. */
+function bandCentsAt(partId, t) {
+  const part = state.project.parts.find((p) => p.id === partId);
+  if (!part || !state.score) return null;
+  let best = null;
+  for (const i of part.partials) {
+    const p = state.score.partials[i - 1];
+    if (!p) continue;
+    const n = p.t.length;
+    if (t < p.t[0] || t > p.t[n - 1]) continue;
+    let k = 0;
+    while (k + 1 < n && p.t[k + 1] <= t) k++;
+    if (k + 1 >= n) continue;
+    const u = (t - p.t[k]) / (p.t[k + 1] - p.t[k] || 1);
+    const f = p.f[k] + u * (p.f[k + 1] - p.f[k]);
+    const amp = p.a[k] + u * (p.a[k + 1] - p.a[k]);
+    if (f > 0 && (!best || amp > best.a)) best = { f, a: amp };
+  }
+  return best ? 1200 * Math.log2(best.f / 440) : null;
+}
+
+$('mKind').onchange = () => {};
 $('mDelete').onclick = () => {
   if (state.editingId) removeAnnotation(state.project, state.editingId);
   state.editingId = null;
@@ -276,7 +331,6 @@ $('mDelete').onclick = () => {
   $('modal').classList.add('hidden');
   touched();
 };
-
 $('mExplode').onclick = () => {
   if (state.editingId) explodeToParts(state.project, state.editingId);
   state.editingId = null;
@@ -284,7 +338,6 @@ $('mExplode').onclick = () => {
   $('modal').classList.add('hidden');
   touched();
 };
-
 $('mCancel').onclick = () => {
   state.pendingPlace = null;
   $('modal').classList.add('hidden');
@@ -296,14 +349,14 @@ function renderInspector() {
   if (!a) {
     box.className = 'hint';
     box.textContent =
-      'Click an empty spot on a system to place a mark. Click a mark to select it, ' +
-      'drag to move, double-click to retype.';
+      'Click anywhere on a part to place a mark exactly there. Click a mark to ' +
+      'select it, drag to move, double-click to retype.';
     return;
   }
   box.className = '';
   const scopeName =
     a.scope === GLOBAL
-      ? 'all parts'
+      ? 'Full Score'
       : state.project.parts.find((p) => p.id === a.scope)?.name || 'unknown part';
   box.innerHTML = `
     <div class="item selected" style="cursor:default">
@@ -311,7 +364,7 @@ function renderInspector() {
         <div class="nm">${escapeHtml(a.text)}</div>
         <div class="meta">${KINDS[a.kind]?.label || a.kind} · ${escapeHtml(scopeName)} · ${a.t.toFixed(2)}s${
           a.t2 != null ? `–${a.t2.toFixed(2)}s` : ''
-        } · ${a.place}</div>
+        }</div>
       </div>
     </div>
     <div class="row wrap" style="margin-top:8px">
@@ -359,14 +412,13 @@ function renderMarks() {
     tag.className = 'tag' + (a.scope === GLOBAL ? ' global' : '');
     tag.textContent =
       a.scope === GLOBAL
-        ? 'all'
+        ? 'score'
         : (state.project.parts.find((p) => p.id === a.scope)?.name || '?').slice(0, 10);
     row.append(grow, tag);
     row.onclick = () => {
       state.editingId = a.id;
       sheet.selectedId = a.id;
-      // Bring the mark into view if it is off-screen.
-      if (a.t < sheet.t0 || a.t > sheet.t0 + sheet.tSpan) {
+      if (sheet.view === 'galley' && (a.t < sheet.t0 || a.t > sheet.t0 + sheet.tSpan)) {
         sheet.t0 = Math.max(0, a.t - sheet.tSpan / 3);
       }
       sheet.draw();
@@ -387,6 +439,102 @@ $('filterGlobal').onclick = () => {
 };
 
 /* ------------------------------------------------------------------ *
+ * Engrave — spacing, breaks, furniture
+ * ------------------------------------------------------------------ */
+
+const spacing = [
+  ['pxPerSecond', 'Horizontal spacing', (v) => `${v} px per second`],
+  ['staffHeight', 'Staff height', (v) => `${v} px`],
+  ['staffGap', 'Gap between parts', (v) => `${v} px`],
+  ['systemGap', 'Gap between systems', (v) => `${v} px`],
+  ['ribbonScale', 'Ribbon thickness', (v) => `${v} px at loudest`],
+];
+for (const [key, label, fmt] of spacing) {
+  $(key).oninput = () => {
+    const v = parseFloat($(key).value);
+    layout()[key] = v;
+    $(`${key}Label`).textContent = `${label} — ${fmt(v)}`;
+    markDirty();
+    sheet.draw();
+  };
+}
+
+for (const key of ['showPartLabels', 'showStaffLines', 'showTitle', 'showPageNumbers']) {
+  $(key).onchange = () => {
+    layout()[key] = $(key).checked;
+    markDirty();
+    sheet.draw();
+  };
+}
+
+function breakTime() {
+  // The selected mark is usually what the break is meant to sit against.
+  const a = state.project.annotations.find((x) => x.id === state.editingId);
+  return a ? a.t : sheet.cursorTime();
+}
+
+$('addSystemBreak').onclick = () => {
+  addBreak(state.project, { kind: 'system', t: breakTime(), scope: $('breakScope').value });
+  touched();
+};
+$('addPageBreak').onclick = () => {
+  addBreak(state.project, { kind: 'page', t: breakTime(), scope: $('breakScope').value });
+  touched();
+};
+
+function renderBreaks() {
+  const box = $('breakList');
+  box.innerHTML = '';
+  const list = (state.project.breaks || []).slice().sort((a, b) => a.t - b.t);
+  if (!list.length) {
+    box.innerHTML = '<div class="hint">No breaks — the score casts off automatically.</div>';
+    return;
+  }
+  for (const b of list) {
+    const row = document.createElement('div');
+    row.className = 'item';
+    const grow = document.createElement('div');
+    grow.className = 'grow';
+    const nm = document.createElement('div');
+    nm.className = 'nm';
+    nm.textContent = b.kind === 'page' ? 'Page break' : 'System break';
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const who =
+      b.scope === GLOBAL
+        ? 'Full Score'
+        : state.project.parts.find((p) => p.id === b.scope)?.name || '?';
+    meta.textContent = `${b.t.toFixed(2)}s · ${who}`;
+    grow.append(nm, meta);
+    const del = document.createElement('button');
+    del.className = 'sm';
+    del.textContent = '✕';
+    del.onclick = () => {
+      removeBreak(state.project, b.id);
+      touched();
+    };
+    row.append(grow, del);
+    box.append(row);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * View
+ * ------------------------------------------------------------------ */
+
+function setView(v) {
+  sheet.view = v;
+  $('pageViewBtn').classList.toggle('active', v === 'page');
+  $('galleyViewBtn').classList.toggle('active', v === 'galley');
+  $('zoomHint').textContent =
+    v === 'page' ? 'scroll to page · ⌘-scroll to zoom' : 'scroll to zoom · shift-scroll to pan';
+  sheet.fitAll();
+}
+$('pageViewBtn').onclick = () => setView('page');
+$('galleyViewBtn').onclick = () => setView('galley');
+$('fitBtn').onclick = () => sheet.fitAll();
+
+/* ------------------------------------------------------------------ *
  * Save / open / export
  * ------------------------------------------------------------------ */
 
@@ -403,10 +551,13 @@ function touched() {
 function refresh() {
   sheet.setProject(state.project);
   renderParts();
-  renderSoloSelect();
+  renderTargetSelect();
+  scopeOptions($('breakScope'), $('breakScope').value || GLOBAL);
   renderInspector();
   renderMarks();
+  renderBreaks();
   if (state.score) showIssues(validate(state.project, state.score));
+  sheet.draw();
 }
 
 $('saveBtn').onclick = async () => {
@@ -438,8 +589,11 @@ $('openBtn').onclick = async () => {
     row.onclick = async () => {
       const doc = await (await fetch(`/api/projects/${encodeURIComponent(p.name)}`)).json();
       state.project = doc;
+      if (!state.project.breaks) state.project.breaks = [];
+      if (!state.project.layout) state.project.layout = defaultLayout();
       $('projectName').value = p.name;
       $('openModal').classList.add('hidden');
+      syncControls();
       refresh();
       showIssues(
         state.score
@@ -451,11 +605,25 @@ $('openBtn').onclick = async () => {
   }
   $('openModal').classList.remove('hidden');
 };
-
 $('openCancel').onclick = () => $('openModal').classList.add('hidden');
 
-$('exportBtn').onclick = () => $('exportModal').classList.remove('hidden');
+function openExport(mode) {
+  state.mode = mode;
+  $('exportTitle').textContent = mode === 'print' ? 'Print' : 'Export';
+  $('exportActions').classList.toggle('hidden', mode === 'print');
+  $('expPrintGo').classList.toggle('hidden', mode !== 'print');
+  $('exportModal').classList.remove('hidden');
+}
+$('exportBtn').onclick = () => openExport('export');
+$('printBtn').onclick = () => {
+  if (!state.score) return alert('Load the score first.');
+  openExport('print');
+};
 $('expCancel').onclick = () => $('exportModal').classList.add('hidden');
+$('expPrintGo').onclick = () => {
+  openPrintView(state.score, state.project, $('expWhich').value, $('projectName').value.trim());
+  $('exportModal').classList.add('hidden');
+};
 
 function download(obj, filename) {
   const blob = new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' });
@@ -465,52 +633,40 @@ function download(obj, filename) {
   a.click();
   URL.revokeObjectURL(a.href);
 }
-
 const baseName = () => ($('projectName').value.trim() || 'engraving').replace(/\s+/g, '_');
 
 $('expProject').onclick = () => {
   download(state.project, `${baseName()}.engraving.json`);
   $('exportModal').classList.add('hidden');
 };
-
 $('expPartMap').onclick = () => {
   download(toPartMap(state.project), `${baseName()}_parts.json`);
   $('exportModal').classList.add('hidden');
 };
-
 $('expSvg').onclick = () => {
   if (!state.score) return alert('Load the score first.');
-  downloadSVG(state.score, state.project, { title: $('projectName').value.trim() });
+  downloadSVG(state.score, state.project, $('expWhich').value, $('projectName').value.trim());
   $('exportModal').classList.add('hidden');
 };
 
-$('printBtn').onclick = () => {
-  if (!state.score) return alert('Load the score first.');
-  openPrintView(state.score, state.project, { title: $('projectName').value.trim() });
-};
-
-/* ------------------------------------------------------------------ *
- * View controls
- * ------------------------------------------------------------------ */
-
-$('fitBtn').onclick = () => sheet.fitAll();
-$('systemHeight').oninput = () => {
-  sheet.systemHeight = parseFloat($('systemHeight').value);
-  sheet.draw();
-};
-$('ribbonScale').oninput = () => {
-  sheet.ribbonScale = parseFloat($('ribbonScale').value);
-  sheet.draw();
-};
+/** Push saved layout values back into the controls after opening a project. */
+function syncControls() {
+  const l = layout();
+  for (const [key, label, fmt] of spacing) {
+    if (l[key] != null) $(key).value = l[key];
+    $(`${key}Label`).textContent = `${label} — ${fmt(parseFloat($(key).value))}`;
+  }
+  for (const key of ['showPartLabels', 'showStaffLines', 'showTitle', 'showPageNumbers']) {
+    $(key).checked = !!l[key];
+  }
+  $('lowestAtBottom').checked = l.lowestAtBottom !== false;
+}
 
 window.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') {
-    $('modal').classList.add('hidden');
-    $('openModal').classList.add('hidden');
-    $('exportModal').classList.add('hidden');
+    for (const id of ['modal', 'openModal', 'exportModal']) $(id).classList.add('hidden');
   }
-  const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '');
-  if (typing) return;
+  if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) return;
   if ((ev.key === 'Delete' || ev.key === 'Backspace') && state.editingId) {
     removeAnnotation(state.project, state.editingId);
     state.editingId = null;
@@ -536,4 +692,5 @@ function escapeHtml(s) {
   );
 }
 
+syncControls();
 refresh();

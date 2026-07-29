@@ -20,61 +20,160 @@
       <button class="sm" id="saveBtn">Save</button>
       <button class="sm" id="openBtn">Open…</button>
       <button class="sm" id="exportBtn">Export…</button>
-      <button class="sm" id="printBtn">Print</button>
+      <button class="sm" id="printBtn">Print…</button>
       <input type="file" id="scoreFile" accept=".sav,.csv" class="hidden" />
       <input type="file" id="importFile" accept=".json" class="hidden" />
+    </div>
+
+    <!-- Dorico-style modes: what you are doing decides what you see. -->
+    <div class="tabs">
+      <button class="tab active" data-tab="setup">Setup</button>
+      <button class="tab" data-tab="write">Write</button>
+      <button class="tab" data-tab="engrave">Engrave</button>
     </div>
 
     <div id="issues" class="issues hidden"></div>
 
     <main>
       <aside class="panel">
-        <section class="block">
-          <h2>Parts</h2>
-          <div class="hint">
-            Grouping partials into named parts is done here. The conductor page
-            imports the map this writes.
-          </div>
-          <div class="row wrap" style="margin: 10px 0">
-            <button class="sm" id="autoParts">One per partial</button>
-            <button class="sm" id="addPart">New part…</button>
-          </div>
-          <div id="partList" class="list"></div>
-        </section>
+        <!-- ============ SETUP ============ -->
+        <div class="tabpane" data-pane="setup">
+          <details class="group" open>
+            <summary>Parts</summary>
+            <div class="body">
+              <div class="hint">
+                Grouping partials into named parts is done here. The conductor
+                page imports the map this writes.
+              </div>
+              <div class="row wrap" style="margin: 10px 0">
+                <button class="sm" id="autoParts">One per partial</button>
+                <button class="sm" id="addPart">New part…</button>
+              </div>
+              <div id="partList" class="list"></div>
+            </div>
+          </details>
 
-        <section class="block">
-          <h2>Annotation</h2>
-          <div id="inspector" class="hint">
-            Click an empty spot on a system to place a mark. Click a mark to
-            select it, drag to move, double-click to retype.
-          </div>
-        </section>
+          <details class="group" open>
+            <summary>Layout order</summary>
+            <div class="body">
+              <label class="check">
+                <input type="checkbox" id="lowestAtBottom" checked />
+                <span>Lowest part at the bottom</span>
+              </label>
+              <div class="hint">
+                Partial 1 sits on the bottom system and the spectrum reads
+                upward, as in a conventional score.
+              </div>
+            </div>
+          </details>
+        </div>
 
-        <section class="block">
-          <h2>All marks</h2>
-          <div class="row wrap" style="margin-bottom: 8px">
-            <button class="sm" id="filterAll">All</button>
-            <button class="sm" id="filterGlobal">Global only</button>
-          </div>
-          <div id="markList" class="list small"></div>
-        </section>
+        <!-- ============ WRITE ============ -->
+        <div class="tabpane hidden" data-pane="write">
+          <details class="group" open>
+            <summary>Selected annotation</summary>
+            <div class="body">
+              <div id="inspector" class="hint">
+                Click anywhere on a part to place a mark exactly there. Click a
+                mark to select it, drag to move, double-click to retype.
+              </div>
+            </div>
+          </details>
+
+          <details class="group" open>
+            <summary>All marks</summary>
+            <div class="body">
+              <div class="row wrap" style="margin-bottom: 8px">
+                <button class="sm" id="filterAll">All</button>
+                <button class="sm" id="filterGlobal">Full Score only</button>
+              </div>
+              <div id="markList" class="list small"></div>
+            </div>
+          </details>
+        </div>
+
+        <!-- ============ ENGRAVE ============ -->
+        <div class="tabpane hidden" data-pane="engrave">
+          <details class="group" open>
+            <summary>Note spacing</summary>
+            <div class="body">
+              <label class="field">
+                <span id="pxPerSecondLabel">Horizontal spacing</span>
+                <input type="range" id="pxPerSecond" min="8" max="220" step="2" value="46" />
+              </label>
+              <div class="hint">
+                How much width one second of music occupies. Wider spacing casts
+                the score off into more systems.
+              </div>
+            </div>
+          </details>
+
+          <details class="group" open>
+            <summary>Staff spacing</summary>
+            <div class="body">
+              <label class="field">
+                <span id="staffHeightLabel">Staff height</span>
+                <input type="range" id="staffHeight" min="30" max="240" step="2" value="84" />
+              </label>
+              <label class="field">
+                <span id="staffGapLabel">Gap between parts</span>
+                <input type="range" id="staffGap" min="0" max="80" step="1" value="12" />
+              </label>
+              <label class="field">
+                <span id="systemGapLabel">Gap between systems</span>
+                <input type="range" id="systemGap" min="0" max="140" step="2" value="34" />
+              </label>
+              <label class="field">
+                <span id="ribbonScaleLabel">Ribbon thickness</span>
+                <input type="range" id="ribbonScale" min="2" max="70" step="1" value="18" />
+              </label>
+            </div>
+          </details>
+
+          <details class="group" open>
+            <summary>Breaks</summary>
+            <div class="body">
+              <label class="field">
+                <span>Applies to</span>
+                <select id="breakScope"></select>
+              </label>
+              <div class="row wrap">
+                <button class="sm" id="addSystemBreak">Create System Break</button>
+                <button class="sm" id="addPageBreak">Create Page Break</button>
+              </div>
+              <div class="hint" style="margin-top: 8px">
+                Placed at the centre of the view, or at the selected mark. Set to
+                Full Score to break every layout, or to one part to break only
+                that player's copy.
+              </div>
+              <div id="breakList" class="list small" style="margin-top: 10px"></div>
+            </div>
+          </details>
+
+          <details class="group">
+            <summary>Page furniture</summary>
+            <div class="body">
+              <label class="check"><input type="checkbox" id="showPartLabels" checked /><span>Part names</span></label>
+              <label class="check"><input type="checkbox" id="showStaffLines" /><span>Staff rules</span></label>
+              <label class="check"><input type="checkbox" id="showTitle" /><span>Title on first page</span></label>
+              <label class="check"><input type="checkbox" id="showPageNumbers" /><span>Page numbers</span></label>
+              <div class="hint">All off by default — the notation is the ribbon.</div>
+            </div>
+          </details>
+        </div>
       </aside>
 
       <div id="stage">
         <canvas id="sheet"></canvas>
         <div class="stage-foot">
-          <span class="hint" id="zoomHint">scroll to zoom · shift-scroll to pan</span>
-          <div class="spacer"></div>
           <button class="sm" id="fitBtn">Fit</button>
-          <label class="inline">
-            <span>Systems</span>
-            <input type="range" id="systemHeight" min="70" max="320" step="10" value="150" />
-          </label>
-          <label class="inline">
-            <span>Thickness</span>
-            <input type="range" id="ribbonScale" min="4" max="90" step="2" value="34" />
-          </label>
-          <select id="soloPart" class="inline-select"></select>
+          <div class="viewswitch">
+            <button class="sm" id="pageViewBtn">Page view</button>
+            <button class="sm active" id="galleyViewBtn">Galley view</button>
+          </div>
+          <select id="targetSelect" class="inline-select"></select>
+          <div class="spacer"></div>
+          <span class="hint" id="zoomHint">scroll to zoom · shift-scroll to pan</span>
         </div>
       </div>
     </main>
@@ -117,7 +216,7 @@
         </div>
         <div class="row" style="margin-top: 4px">
           <button class="sm" id="mDelete">Delete</button>
-          <button class="sm" id="mExplode" title="Replace this global mark with an editable copy on every part">Split to parts</button>
+          <button class="sm" id="mExplode" title="Replace this Full Score mark with an editable copy on every part">Split to parts</button>
           <div class="spacer"></div>
           <button class="sm" id="mCancel">Cancel</button>
           <button class="primary" id="mSave">Save</button>
@@ -137,27 +236,39 @@
       </div>
     </div>
 
-    <!-- Export -->
+    <!-- Export / print -->
     <div id="exportModal" class="modal hidden">
       <div class="modal-card">
-        <h3>Export</h3>
-        <div class="list">
+        <h3 id="exportTitle">Export</h3>
+        <label class="field">
+          <span>Layouts</span>
+          <select id="expWhich">
+            <option value="score">Full Score</option>
+            <option value="parts">Individual parts (one file each)</option>
+            <option value="both">Full Score and all parts</option>
+          </select>
+        </label>
+        <div class="hint" style="margin-bottom: 12px">
+          Page and system breaks are applied exactly as laid out on screen.
+        </div>
+        <div class="list" id="exportActions">
+          <button class="row-btn" id="expSvg">
+            <strong>SVG pages</strong>
+            <span>Vector pages, editable in Illustrator or Inkscape.</span>
+          </button>
           <button class="row-btn" id="expProject">
             <strong>Engraving project</strong>
-            <span>Parts and annotations together — what the conductor page imports.</span>
+            <span>Parts, marks and breaks — what the conductor page imports.</span>
           </button>
           <button class="row-btn" id="expPartMap">
             <strong>Part map only</strong>
             <span>Just the named partial groupings.</span>
           </button>
-          <button class="row-btn" id="expSvg">
-            <strong>SVG pages</strong>
-            <span>The engraved systems as vector pages, for print or further editing.</span>
-          </button>
         </div>
         <div class="row" style="margin-top: 12px">
           <div class="spacer"></div>
           <button class="sm" id="expCancel">Close</button>
+          <button class="primary hidden" id="expPrintGo">Open print view</button>
         </div>
       </div>
     </div>

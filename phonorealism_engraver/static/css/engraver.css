@@ -354,3 +354,115 @@ main {
 }
 
 /* Print view is generated into its own window; see print.js. */
+
+/* ---------- Setup / Write / Engrave modes ---------- */
+
+.tabs {
+  display: flex;
+  gap: 2px;
+  padding: 0 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--edge);
+  flex: 0 0 auto;
+}
+
+.tab {
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  background: transparent;
+  padding: 9px 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.tab:hover {
+  color: var(--text);
+}
+
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+  font-weight: 600;
+}
+
+/* Collapsible groups within a mode. */
+.group {
+  border-bottom: 1px solid var(--edge);
+  padding: 2px 0 6px;
+}
+
+.group > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 9px 2px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  user-select: none;
+}
+
+.group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.group > summary::before {
+  content: "▸ ";
+  display: inline-block;
+  transition: transform 0.12s;
+  color: var(--dim);
+}
+
+.group[open] > summary::before {
+  content: "▾ ";
+}
+
+.group > summary:hover {
+  color: var(--text);
+}
+
+.group .body {
+  padding: 2px 2px 10px;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 5px 0;
+  cursor: pointer;
+}
+
+.check input {
+  width: auto;
+  accent-color: var(--accent);
+}
+
+/* ---------- view switch ---------- */
+
+.viewswitch {
+  display: flex;
+  gap: 0;
+}
+
+.viewswitch button {
+  border-radius: 0;
+}
+
+.viewswitch button:first-child {
+  border-radius: var(--radius) 0 0 var(--radius);
+}
+
+.viewswitch button:last-child {
+  border-radius: 0 var(--radius) var(--radius) 0;
+  margin-left: -1px;
+}
+
+.viewswitch button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06121f;
+  font-weight: 600;
+}

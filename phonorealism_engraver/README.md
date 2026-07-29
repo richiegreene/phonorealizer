@@ -30,41 +30,75 @@ vertical nudge, so a lyric glued to a line travels with it as the pitch scale
 changes — a pixel offset would drift off its partial the moment the view
 rescaled.
 
-## Using it
+## Three modes
 
-**Load a score**, and every partial becomes its own part. Replace those with
-real ones — *New part…* takes `3, 7, 12-14`. Each part gets a **system**: a
-horizontal band showing its partials in the same ribbon notation the players
-read, where height is pitch and thickness is amplitude.
+Organised as Dorico is, because the vocabulary is already in use: what you are
+doing decides what the panel offers.
 
-Each system scales its pitch axis to its own part. A score spanning partial 1 at
+**Setup** names the parts. Load a score and every partial becomes its own part;
+replace those with real ones — *New part…* takes `3, 7, 12-14`. Each part gets a
+**staff**: a band showing its partials in the same ribbon notation the players
+read, height as pitch and thickness as amplitude.
+
+Parts are laid out **lowest at the bottom** by default, so partial 1 sits on the
+bottom staff and the spectrum reads upward as in a conventional score.
+
+Each staff scales its pitch axis to its own part. A score spanning partial 1 at
 400 Hz and partial 32 at 19 kHz covers five octaves; one shared axis would
-compress every individual line into a flat thread. Cross-part pitch comparison
-is what the *All parts / Only:* selector is for.
+compress every line into a flat thread.
 
-**Click an empty spot on a system** to place a mark; click one to select, drag to
-move, double-click to retype. *Applies to* decides whether it belongs to that one
-part or to **all parts at once** — global marks are drawn on every system in
-green, so "simultaneously" is visible rather than implied. *Split to parts*
-turns a global mark into an editable copy on each part when they need to diverge.
+**Write** places the marks. Click anywhere on a staff and the mark lands exactly
+there — nothing is auto-positioned, because where a mark sits is an engraving
+decision. Click to select, drag to move, double-click to retype. *Applies to*
+chooses one part or **Full Score**; Full Score marks are drawn on every staff in
+green, so "simultaneously" is visible rather than implied. *Split to parts* turns
+one into editable copies when they need to diverge. An **Until** time makes it a
+span with a continuation line, for *cresc.* or a held direction.
 
-Setting an **Until** time turns a mark into a span, drawn with a continuation
-line — for *cresc.*, *sempre*, or a held direction.
+**Engrave** controls how it sits on the page:
 
-Marks are clamped into their own system band. A part sitting low would otherwise
-push a "below" lyric past the clip and out of existence, and an annotation you
-cannot see is worse than one slightly crowded.
+| | |
+| --- | --- |
+| **Note spacing** | how much width a second of music occupies — wider casts off into more systems |
+| **Staff spacing** | staff height, gap between parts, gap between systems, ribbon thickness |
+| **Breaks** | *Create System Break* / *Create Page Break*, scoped to Full Score or one part |
+| **Page furniture** | part names, staff rules, title, page numbers — all off but part names |
+
+Marks are clamped into their own staff. A part sitting low would otherwise push a
+"below" lyric past the clip and out of existence, and an annotation you cannot
+see is worse than one slightly crowded.
+
+## Galley and Page view
+
+**Galley** is one continuous strip per part with no pagination — what you write
+in, because nothing reflows while you are placing marks. **Page** is the actual
+cast-off pages, laid out as they will print — what you engrave in, because breaks
+and spacing show their real effect.
+
+Both run through the same casting-off engine as the export
+([`shared/layout.js`](../phonorealism_shared/js/layout.js)), so a page break you
+place lands in the same place on paper. Two layout implementations would
+eventually disagree, and the disagreement would only surface after printing.
+
+With no breaks the score casts off automatically, filling each system before
+wrapping. A break overrides that; it never merely suggests.
 
 ## Output
 
+Both **Print** and **Export → SVG** offer three layout choices: **Full Score**,
+**individual parts** (one file each), or both. Each honours the breaks scoped to
+it, exactly as shown on screen.
+
 | Export | What it is |
 | --- | --- |
-| **Engraving project** | Parts and marks together — what the conductor page imports |
-| **Part map only** | Just the named groupings, interchangeable with the conductor's own export |
 | **SVG pages** | Vector pages, editable in Illustrator or Inkscape |
+| **Engraving project** | Parts, marks and breaks — what the conductor page imports |
+| **Part map only** | Just the named groupings, interchangeable with the conductor's own export |
 | **Print** | The same pages in the browser's print dialogue → Save as PDF |
 
 Print and SVG come from one renderer, so they cannot disagree with each other.
+Output carries no title, running head, page count or rules unless *Page
+furniture* asks for them — what comes out is the music.
 
 ### Getting it to the performers
 
@@ -109,14 +143,15 @@ PDF, reuses the same time anchors.
 ```
 server/app.py          project files on disk; LilyPond later
 static/js/
-  canvas.js            the engraving surface — systems, ribbons, mark placement
+  canvas.js            the engraving surface — Galley and Page view
   print.js             paginated SVG for print and export
-  main.js              application wiring
+  main.js              Setup / Write / Engrave wiring
 ../phonorealism_shared/js/
   score.js             both score formats -> one model, canonical numbering
   lib/binser.js        justidraw .sav reader
   annotations.js       the sidecar format, shared with the performer app
   ribbon.js            notation geometry, shared so both apps draw identically
+  layout.js            casting off — breaks, note and staff spacing, pagination
 ```
 
 No score parsing happens in Python. There is one justidraw reader in this
