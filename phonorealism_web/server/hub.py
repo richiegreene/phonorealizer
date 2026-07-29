@@ -429,10 +429,25 @@ def ensure_cert(cert_dir: Path) -> tuple[Path, Path]:
     """
     cert_dir.mkdir(parents=True, exist_ok=True)
     cert, key = cert_dir / "cert.pem", cert_dir / "key.pem"
-    if cert.exists() and key.exists():
-        return cert, key
-
     ip = lan_ip()
+
+    if cert.exists() and key.exists():
+        # Reuse only if it still covers the address we are about to hand out.
+        # DHCP can move this machine between rehearsals, and a stale SAN gives
+        # browsers a name-mismatch error, which is considerably harder to click
+        # past than an ordinary self-signed warning — a bad thing to discover
+        # with players in the room.
+        try:
+            text = subprocess.run(
+                ["openssl", "x509", "-in", str(cert), "-noout", "-text"],
+                check=True, capture_output=True, text=True,
+            ).stdout
+            if f"IP Address:{ip}" in text:
+                return cert, key
+            print(f"[hub] certificate does not cover {ip}; regenerating")
+        except (subprocess.CalledProcessError, OSError):
+            print("[hub] could not inspect existing certificate; regenerating")
+
     subprocess.run(
         [
             "openssl", "req", "-x509", "-newkey", "rsa:2048", "-nodes",

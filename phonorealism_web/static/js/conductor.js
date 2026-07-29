@@ -410,7 +410,22 @@ el.stopBtn.onclick = () => net.stop();
 async function loadJoinInfo() {
   try {
     const info = await (await fetch('/api/info')).json();
-    el.joinUrl.textContent = info.joinUrl;
+
+    // If the conductor opened this page on localhost, `joinUrl` points at
+    // loopback — and every phone that scanned it would resolve that to itself.
+    // Hand out the LAN address instead, which is the one other devices in the
+    // room can actually reach.
+    const isLoopback = /^(https?:\/\/)?(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i;
+    const join =
+      isLoopback.test(info.joinUrl) && info.lanUrl && !isLoopback.test(info.lanUrl)
+        ? info.lanUrl
+        : info.joinUrl;
+    el.joinUrl.textContent = join;
+    if (join !== info.joinUrl) {
+      el.joinHint.textContent =
+        'You are viewing this on localhost; the code above is the address other ' +
+        'devices on this network need.';
+    }
 
     if (!info.secure) {
       el.insecureNote.classList.remove('hidden');
@@ -421,7 +436,7 @@ async function loadJoinInfo() {
         'http://localhost:8000</code>, or restart the hub with <code>--tls</code>.';
     }
 
-    const res = await fetch(`/api/qr?url=${encodeURIComponent(info.joinUrl)}`);
+    const res = await fetch(`/api/qr?url=${encodeURIComponent(join)}`);
     if (res.ok) {
       el.qrBox.innerHTML = await res.text();
     } else {
