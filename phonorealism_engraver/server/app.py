@@ -36,6 +36,23 @@ app = FastAPI(title="Phonorealism Engraver")
 app.add_middleware(GZipMiddleware, minimum_size=2048)
 
 
+@app.middleware("http")
+async def no_cache(request: Request, call_next):
+    """
+    Force revalidation of everything this server hands out.
+
+    Browsers cache ES modules hard, and this is a tool under active development
+    served from disk: an edited main.js that the tab refuses to re-fetch looks
+    exactly like a broken feature, and the usual fix — a hard reload — is not
+    obvious when the symptom is "the button stopped working". Local traffic
+    makes the bandwidth cost irrelevant.
+    """
+    response = await call_next(request)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
 def safe_name(name: str) -> str:
     """
     Reduce a user-supplied project name to a bare filename.

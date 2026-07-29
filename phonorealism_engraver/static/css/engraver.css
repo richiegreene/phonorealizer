@@ -57,6 +57,7 @@ h3 {
 .bar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 8px;
   padding: 8px 12px;
   background: var(--panel);
@@ -465,4 +466,24 @@ main {
   border-color: var(--accent);
   color: #06121f;
   font-weight: 600;
+}
+
+/* Drop target feedback: the whole surface accepts a score file. */
+#stage.dropping::after {
+  content: "Drop a .sav or .csv to load";
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(77, 163, 255, 0.16);
+  border: 2px dashed var(--accent);
+  color: var(--text);
+  font-size: 15px;
+  pointer-events: none;
+  z-index: 5;
+}
+
+#stage {
+  position: relative;
 }

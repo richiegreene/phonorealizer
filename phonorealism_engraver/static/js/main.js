@@ -60,8 +60,12 @@ $('loadScoreBtn').onclick = () => $('scoreFile').click();
 
 $('scoreFile').onchange = async () => {
   const file = $('scoreFile').files[0];
-  if (!file) return;
-  try {
+  if (file) await ingestScore(file);
+};
+
+async function ingestScore(file) {
+  {
+    try {
     const score = await loadScoreFile(file);
     state.score = score;
     if (!state.project.parts.length) {
@@ -79,12 +83,46 @@ $('scoreFile').onchange = async () => {
     sheet.setProject(state.project);
     sheet.fitAll();
     refresh();
-  } catch (err) {
-    showIssues([{ level: 'error', message: err.message }]);
+    } catch (err) {
+      showIssues([
+        { level: 'error', message: `Could not read "${file.name}": ${err.message}` },
+      ]);
+    }
   }
-};
+}
 
 const stripAuto = (p) => ({ id: p.id, name: p.name, partials: p.partials });
+
+/**
+ * Drag a score anywhere onto the surface.
+ *
+ * The file dialog depends on the browser honouring a programmatic click on a
+ * hidden input, which is the one step here that cannot be verified from
+ * outside the browser. Drag and drop reaches the same code path without it.
+ */
+{
+  const stage = $('stage');
+  const stop = (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+  };
+  for (const type of ['dragenter', 'dragover']) {
+    stage.addEventListener(type, (ev) => {
+      stop(ev);
+      stage.classList.add('dropping');
+    });
+  }
+  for (const type of ['dragleave', 'drop']) {
+    stage.addEventListener(type, (ev) => {
+      stop(ev);
+      stage.classList.remove('dropping');
+    });
+  }
+  stage.addEventListener('drop', (ev) => {
+    const file = ev.dataTransfer?.files?.[0];
+    if (file) ingestScore(file);
+  });
+}
 
 function showIssues(issues) {
   const box = $('issues');
