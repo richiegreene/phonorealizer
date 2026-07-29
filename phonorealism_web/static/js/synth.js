@@ -40,7 +40,10 @@ export class ScorePlayer {
     this.restGain.connect(this.master);
     this.master.connect(ctx.destination);
     this.master.gain.value = 0.8;
-    this.setBalance(0.35);
+    // Start with the performer's own line alone. Learning a spectral part means
+    // hearing it isolated first; the ensemble is something you fade in once you
+    // know your own line.
+    this.setBalance(0);
   }
 
   /**
@@ -64,8 +67,9 @@ export class ScorePlayer {
    * @param {object} scoreJSON   wire-format score (see score.js)
    * @param {number[]} ownIndices canonical partial indices for this performer
    * @param {number} detuneCents  applied to everything the performer hears
+   * @param {number} timbre       0..300: sine, triangle, saw, square
    */
-  prepare(scoreJSON, ownIndices, detuneCents = 0) {
+  prepare(scoreJSON, ownIndices, detuneCents = 0, timbre = 100) {
     this.ready = false;
     const duration = Math.min(scoreJSON.duration, MAX_RENDER_SECONDS);
     const truncated = scoreJSON.duration > MAX_RENDER_SECONDS;
@@ -108,6 +112,7 @@ export class ScorePlayer {
         duration,
         detune: Math.pow(2, detuneCents / 1200),
         withEnsemble,
+        timbre,
       });
     });
   }

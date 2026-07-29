@@ -159,10 +159,29 @@ discretion — an unready player is reported, never a veto.
 tap ready. Then wait; the conductor starts everyone together.
 
 - **Balance** crossfades between your own line and the rest of the ensemble.
-  Equal-power, so the midpoint does not dip.
-- **Pitch span / mode** — `follow` centres on your notated pitch for intonation
-  work and widens automatically to keep all of your own partials on screen;
-  `range` fits the part's whole contour.
+  Equal-power, so the midpoint does not dip. Starts at your part alone — learning
+  a spectral line means hearing it isolated before hearing it in context.
+- **Playback timbre** morphs sine → triangle → saw → square, matching the "Basic
+  Shapes" preset in the desktop modifier's wavetable dialog. Default triangle:
+  audible enough to hear against an instrument without the harmonic clutter that
+  makes a saw hard to tune to. Changing it re-renders the monitor mix, so it
+  applies on release rather than while dragging.
+
+  The tables are **band-limited**, unlike the desktop's. A naive square has
+  harmonics without end, and these scores carry partials up to 19 kHz — every
+  harmonic past Nyquist would fold back down as inharmonic noise, precisely in
+  the range you are tuning against. Each shape is built additively at a set of
+  octave mip levels and the renderer picks the one that suits the frequency it
+  is sounding; a square at 15 kHz measures its worst alias image at −176 dB.
+
+  Note that brightness does not rise strictly monotonically across the morph: a
+  true triangle's 3rd harmonic is negative (−1/9) while a saw's is +1/3, so the
+  crossfade nulls it around the one-quarter point between them. That is inherent
+  to morphing real waveforms rather than a defect.
+- **Pitch span / mode** — `range` (default) fits the part's whole contour and is
+  legible the moment playback starts; `follow` centres on your notated pitch for
+  intonation work and widens automatically to keep all of your own partials on
+  screen.
 - **Search band** keeps the pitch tracker locked to your partial instead of
   jumping to a louder neighbour. This matters: phonorealism parts are often quiet
   high partials sitting under something much louder. Narrow is safer; widen it

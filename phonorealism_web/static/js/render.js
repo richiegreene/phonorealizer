@@ -51,8 +51,13 @@ export class PerformanceView {
     this.window = 6;
     /** Half-height of the pitch pane, in cents, when following. */
     this.pitchSpan = 150;
-    /** 'follow' centres on the notated pitch; 'range' shows the part's extent. */
-    this.pitchMode = 'follow';
+    /**
+     * 'range' fits the part's whole contour; 'follow' centres on the notated
+     * pitch for fine intonation work. Range is the default because it is
+     * legible the instant playback starts — a performer needs to find their
+     * place before they need cents.
+     */
+    this.pitchMode = 'range';
     this.showEnsemble = false;
 
     this.time = 0;

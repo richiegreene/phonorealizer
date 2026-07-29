@@ -85,12 +85,28 @@
         <h2>Monitor mix</h2>
         <label class="field">
           <span id="balLabel">Balance — your part ↔ ensemble</span>
-          <input type="range" id="balance" min="0" max="1" step="0.01" value="0.35" />
+          <input type="range" id="balance" min="0" max="1" step="0.01" value="0" />
         </label>
         <label class="field">
           <span id="volLabel">Volume</span>
           <input type="range" id="volume" min="0" max="1" step="0.01" value="0.8" />
         </label>
+      </div>
+
+      <div class="card">
+        <h2>Playback timbre</h2>
+        <canvas id="waveView" class="wave"></canvas>
+        <label class="field" style="margin-top: 10px">
+          <span id="timbreLabel">Triangle</span>
+          <input type="range" id="timbre" min="0" max="300" step="1" value="100" />
+        </label>
+        <div class="wave-ticks">
+          <span>sine</span><span>tri</span><span>saw</span><span>square</span>
+        </div>
+        <div class="hint" style="margin-top: 8px">
+          Brighter shapes cut through an instrument more clearly; sine is purest
+          for tuning against. Changing this re-renders your monitor mix.
+        </div>
       </div>
 
       <div class="card">
@@ -104,7 +120,7 @@
           <input type="range" id="pitchSpan" min="25" max="1200" step="25" value="150" />
         </label>
         <div class="row wrap">
-          <button class="sm" id="modeBtn">Mode: follow</button>
+          <button class="sm" id="modeBtn">Mode: range</button>
           <button class="sm" id="ensembleBtn">Ensemble lines: off</button>
         </div>
       </div>

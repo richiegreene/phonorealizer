@@ -51,6 +51,9 @@ const el = {
   band: $('band'),
   bandLabel: $('bandLabel'),
   transpose: $('transpose'),
+  timbre: $('timbre'),
+  timbreLabel: $('timbreLabel'),
+  waveView: $('waveView'),
   inputDevice: $('inputDevice'),
   inputGain: $('inputGain'),
   gainLabel: $('gainLabel'),
@@ -63,6 +66,7 @@ const state = {
   partials: [],
   others: [],
   transposeCents: 0,
+  timbre: 100, // 0 sine, 100 triangle, 200 saw, 300 square
   calibrationGain: 1,
   gainDb: 0,
   running: false,
@@ -312,7 +316,12 @@ async function prepareAudio() {
   el.waitingHint.textContent = busy;
   el.readyStatus.textContent = busy;
   try {
-    const r = await player.prepare(state.scoreJSON, own, state.transposeCents);
+    const r = await player.prepare(
+      state.scoreJSON,
+      own,
+      state.transposeCents,
+      state.timbre
+    );
     state.prepared = true;
 
     const notes = [];
@@ -439,6 +448,9 @@ function loop() {
 
 el.settingsBtn.onclick = () => {
   el.settings.classList.toggle('hidden');
+  // The canvas has no measurable width while the drawer is hidden, so it can
+  // only be sized once it is actually on screen.
+  if (!el.settings.classList.contains('hidden')) drawWave(state.timbre);
 };
 el.closeSettings.onclick = () => el.settings.classList.add('hidden');
 el.backBtn.onclick = () => stopRun();
@@ -481,6 +493,92 @@ el.band.oninput = () => {
   el.bandLabel.textContent = mic.bandLimited
     ? `Search band — ±${mic.bandSemitones} semitones`
     : 'Search band — full range';
+};
+
+/* ---- playback timbre ---- */
+
+const SHAPE_NAMES = ['Sine', 'Triangle', 'Sawtooth', 'Square'];
+
+/**
+ * Naive shape functions for the preview only.
+ *
+ * What you actually hear is band-limited (see render-worker.js), but an ideal
+ * square reads as a square at a glance, whereas a band-limited one at this size
+ * is mostly Gibbs ringing. The picture is an affordance for choosing a shape,
+ * not an oscilloscope.
+ */
+const SHAPE_FNS = [
+  (x) => Math.sin(2 * Math.PI * x),
+  (x) => 4 * Math.abs(x - Math.floor(x + 0.5)) - 1,
+  (x) => 2 * (x - Math.floor(x + 0.5)),
+  (x) => (x % 1 < 0.5 ? 1 : -1),
+];
+
+function timbreName(v) {
+  const pos = v / 100;
+  const lo = Math.min(2, Math.floor(pos));
+  const frac = pos - lo;
+  if (frac < 0.02) return SHAPE_NAMES[lo];
+  if (frac > 0.98) return SHAPE_NAMES[lo + 1];
+  return `${SHAPE_NAMES[lo]} → ${SHAPE_NAMES[lo + 1]} ${Math.round(frac * 100)}%`;
+}
+
+function drawWave(v) {
+  const c = el.waveView;
+  const rect = c.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.round(rect.width));
+  const h = Math.max(1, Math.round(rect.height));
+  if (c.width !== w * dpr || c.height !== h * dpr) {
+    c.width = w * dpr;
+    c.height = h * dpr;
+  }
+  const g = c.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+
+  const pos = Math.min(3, Math.max(0, v / 100));
+  const lo = Math.min(2, Math.floor(pos));
+  const frac = pos - lo;
+  const a = SHAPE_FNS[lo];
+  const b = SHAPE_FNS[Math.min(3, lo + 1)];
+
+  g.strokeStyle = '#232a33';
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(0, h / 2 + 0.5);
+  g.lineTo(w, h / 2 + 0.5);
+  g.stroke();
+
+  g.strokeStyle = '#4da3ff';
+  g.lineWidth = 2;
+  g.lineJoin = 'round';
+  g.shadowColor = '#4da3ff';
+  g.shadowBlur = 6;
+  g.beginPath();
+  const cycles = 2;
+  for (let px = 0; px <= w; px++) {
+    const x = (px / w) * cycles;
+    const y = a(x) + frac * (b(x) - a(x));
+    const py = h / 2 - y * (h / 2 - 8);
+    if (px === 0) g.moveTo(px, py);
+    else g.lineTo(px, py);
+  }
+  g.stroke();
+  g.shadowBlur = 0;
+}
+
+el.timbre.oninput = () => {
+  state.timbre = parseFloat(el.timbre.value);
+  el.timbreLabel.textContent = timbreName(state.timbre);
+  drawWave(state.timbre);
+};
+
+// Re-render only on release: each change rebuilds both monitor buffers, which
+// is far too heavy to do on every pixel of slider travel.
+el.timbre.onchange = async () => {
+  state.prepared = false;
+  if (state.ready && !state.running) await prepareAudio();
 };
 
 el.transpose.onchange = async () => {
@@ -555,6 +653,7 @@ for (const fn of [
   el.pitchSpan.oninput,
   el.band.oninput,
   el.inputGain.oninput,
+  el.timbre.oninput,
 ]) {
   fn();
 }

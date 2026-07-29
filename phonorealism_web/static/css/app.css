@@ -320,6 +320,37 @@ label.field > span {
   background: var(--bad);
 }
 
+/*
+ * The setup drawer covers the screen rather than stacking underneath the lobby.
+ * Appended below, a performer had to scroll past the whole part list to reach
+ * their monitor balance — unusable on a phone, and worse mid-rehearsal.
+ */
+#settings {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: var(--bg);
+  padding-bottom: max(24px, env(safe-area-inset-bottom));
+}
+
+canvas.wave {
+  display: block;
+  width: 100%;
+  height: 96px;
+  background: var(--panel-2);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+}
+
+.wave-ticks {
+  display: flex;
+  justify-content: space-between;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  color: var(--dim);
+  margin-top: -4px;
+}
+
 .hint {
   font-size: 12px;
   color: var(--muted);
