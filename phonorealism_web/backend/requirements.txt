@@ -1,9 +1,0 @@
-fastapi
-uvicorn
-websockets
-numpy
-scipy
-librosa
-pandas
-soundfile
-sounddevice
