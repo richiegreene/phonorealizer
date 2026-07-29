@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#0f1216" />
+    <title>Phonorealism Engraver</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230f1216'/><path d='M4 17 Q10 9 17 15 T28 12' stroke='%23e4ecf4' stroke-width='4' fill='none' stroke-linecap='round'/><circle cx='23' cy='23' r='3' fill='%237ee0c0'/></svg>" />
+    <link rel="stylesheet" href="/static/css/engraver.css" />
+  </head>
+  <body>
+    <div class="bar">
+      <div>
+        <div class="title">Engraver</div>
+        <div class="subtitle" id="scoreInfo">no score loaded</div>
+      </div>
+      <div class="spacer"></div>
+      <input type="text" id="projectName" class="name-field" placeholder="project name" />
+      <button class="sm" id="loadScoreBtn">Load score…</button>
+      <button class="sm" id="saveBtn">Save</button>
+      <button class="sm" id="openBtn">Open…</button>
+      <button class="sm" id="exportBtn">Export…</button>
+      <button class="sm" id="printBtn">Print</button>
+      <input type="file" id="scoreFile" accept=".sav,.csv" class="hidden" />
+      <input type="file" id="importFile" accept=".json" class="hidden" />
+    </div>
+
+    <div id="issues" class="issues hidden"></div>
+
+    <main>
+      <aside class="panel">
+        <section class="block">
+          <h2>Parts</h2>
+          <div class="hint">
+            Grouping partials into named parts is done here. The conductor page
+            imports the map this writes.
+          </div>
+          <div class="row wrap" style="margin: 10px 0">
+            <button class="sm" id="autoParts">One per partial</button>
+            <button class="sm" id="addPart">New part…</button>
+          </div>
+          <div id="partList" class="list"></div>
+        </section>
+
+        <section class="block">
+          <h2>Annotation</h2>
+          <div id="inspector" class="hint">
+            Click an empty spot on a system to place a mark. Click a mark to
+            select it, drag to move, double-click to retype.
+          </div>
+        </section>
+
+        <section class="block">
+          <h2>All marks</h2>
+          <div class="row wrap" style="margin-bottom: 8px">
+            <button class="sm" id="filterAll">All</button>
+            <button class="sm" id="filterGlobal">Global only</button>
+          </div>
+          <div id="markList" class="list small"></div>
+        </section>
+      </aside>
+
+      <div id="stage">
+        <canvas id="sheet"></canvas>
+        <div class="stage-foot">
+          <span class="hint" id="zoomHint">scroll to zoom · shift-scroll to pan</span>
+          <div class="spacer"></div>
+          <button class="sm" id="fitBtn">Fit</button>
+          <label class="inline">
+            <span>Systems</span>
+            <input type="range" id="systemHeight" min="70" max="320" step="10" value="150" />
+          </label>
+          <label class="inline">
+            <span>Thickness</span>
+            <input type="range" id="ribbonScale" min="4" max="90" step="2" value="34" />
+          </label>
+          <select id="soloPart" class="inline-select"></select>
+        </div>
+      </div>
+    </main>
+
+    <!-- New / edit annotation -->
+    <div id="modal" class="modal hidden">
+      <div class="modal-card">
+        <h3 id="modalTitle">New annotation</h3>
+        <label class="field">
+          <span>Text</span>
+          <input type="text" id="mText" placeholder="e.g. low-lands / sempre p / A" />
+        </label>
+        <div class="row">
+          <label class="field" style="flex: 1">
+            <span>Kind</span>
+            <select id="mKind"></select>
+          </label>
+          <label class="field" style="flex: 1">
+            <span>Applies to</span>
+            <select id="mScope"></select>
+          </label>
+        </div>
+        <div class="row">
+          <label class="field" style="flex: 1">
+            <span>Time (s)</span>
+            <input type="number" id="mTime" step="0.01" min="0" />
+          </label>
+          <label class="field" style="flex: 1">
+            <span>Until (s, optional)</span>
+            <input type="number" id="mTime2" step="0.01" min="0" placeholder="—" />
+          </label>
+          <label class="field" style="flex: 1">
+            <span>Place</span>
+            <select id="mPlace">
+              <option value="above">Above</option>
+              <option value="below">Below</option>
+              <option value="on">On the line</option>
+            </select>
+          </label>
+        </div>
+        <div class="row" style="margin-top: 4px">
+          <button class="sm" id="mDelete">Delete</button>
+          <button class="sm" id="mExplode" title="Replace this global mark with an editable copy on every part">Split to parts</button>
+          <div class="spacer"></div>
+          <button class="sm" id="mCancel">Cancel</button>
+          <button class="primary" id="mSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Open project -->
+    <div id="openModal" class="modal hidden">
+      <div class="modal-card">
+        <h3>Open project</h3>
+        <div id="projectList" class="list"></div>
+        <div class="row" style="margin-top: 12px">
+          <div class="spacer"></div>
+          <button class="sm" id="openCancel">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Export -->
+    <div id="exportModal" class="modal hidden">
+      <div class="modal-card">
+        <h3>Export</h3>
+        <div class="list">
+          <button class="row-btn" id="expProject">
+            <strong>Engraving project</strong>
+            <span>Parts and annotations together — what the conductor page imports.</span>
+          </button>
+          <button class="row-btn" id="expPartMap">
+            <strong>Part map only</strong>
+            <span>Just the named partial groupings.</span>
+          </button>
+          <button class="row-btn" id="expSvg">
+            <strong>SVG pages</strong>
+            <span>The engraved systems as vector pages, for print or further editing.</span>
+          </button>
+        </div>
+        <div class="row" style="margin-top: 12px">
+          <div class="spacer"></div>
+          <button class="sm" id="expCancel">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/static/js/main.js"></script>
+  </body>
+</html>

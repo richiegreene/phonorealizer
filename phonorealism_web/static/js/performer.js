@@ -8,11 +8,12 @@
  * everything runs off the local AudioContext clock.
  */
 
-import { Net, fetchScore } from './net.js';
-import { scoreFromJSON, partPartials, partLabel, hzToNoteName } from './score.js';
+import { Net, fetchScore, fetchAnnotations } from './net.js';
+import { scoreFromJSON, partPartials, partLabel, hzToNoteName } from '/shared/score.js';
 import { MicAnalyser, Smoother } from './analyser.js';
 import { ScorePlayer, scheduleCountIn } from './synth.js';
 import { PerformanceView } from './render.js';
+import { GLOBAL } from '/shared/annotations.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -137,9 +138,28 @@ function applyPartSelection() {
   state.partials = transposed(own, state.transposeCents);
   state.others = transposed(others, state.transposeCents);
   view.setScore(state.score, state.partials, state.others);
+  applyAnnotations();
 
   el.partTitle.textContent = state.part.name;
   state.prepared = false;
+}
+
+/** Marks for this performer's part, plus every mark set on all parts at once. */
+function applyAnnotations() {
+  const all = state.engraving?.annotations || [];
+  const id = state.part?.id;
+  view.annotations = all
+    .filter((a) => a.scope === GLOBAL || (id && a.scope === id))
+    .sort((x, y) => x.t - y.t);
+}
+
+async function loadAnnotations() {
+  try {
+    state.engraving = await fetchAnnotations();
+  } catch {
+    state.engraving = null;
+  }
+  applyAnnotations();
 }
 
 /* ------------------------------------------------------------------ *
@@ -633,6 +653,7 @@ net.addEventListener('state', async (ev) => {
   const s = ev.detail;
   if (s.scoreMeta && (!state.score || state.score.name !== s.scoreMeta.name)) {
     await loadScore();
+    await loadAnnotations();
   }
   renderParts();
 
@@ -642,6 +663,10 @@ net.addEventListener('state', async (ev) => {
       prepareAudio().then(() => beginRun(s.transport.startAt));
     }
   }
+});
+
+net.addEventListener('annotationsChanged', async () => {
+  await loadAnnotations();
 });
 
 net.addEventListener('scoreChanged', async () => {

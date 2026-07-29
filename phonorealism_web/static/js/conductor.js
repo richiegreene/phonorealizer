@@ -12,8 +12,8 @@
  * something you notice before the downbeat rather than after it.
  */
 
-import { Net, uploadScore } from './net.js';
-import { loadScoreFile, scoreToJSON, defaultParts, partLabel } from './score.js';
+import { Net, uploadScore, uploadAnnotations } from './net.js';
+import { loadScoreFile, scoreToJSON, defaultParts, partLabel } from '/shared/score.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -40,6 +40,7 @@ const el = {
   startBtn: $('startBtn'),
   stopBtn: $('stopBtn'),
   readyHint: $('readyHint'),
+  partsStatus: $('partsStatus'),
   connPill: $('connPill'),
 };
 
@@ -250,6 +251,13 @@ el.exportParts.onclick = () => {
 };
 
 el.importParts.onclick = () => el.partsFile.click();
+
+/**
+ * Accepts either a bare part map or a full engraving project from
+ * phonorealism_engraver. The engraver owns the part map, so importing its
+ * project adopts both the parts and the marks in one step — keeping them
+ * together is the point, since marks are addressed by part id.
+ */
 el.partsFile.onchange = async () => {
   const f = el.partsFile.files[0];
   if (!f) return;
@@ -258,9 +266,17 @@ el.partsFile.onchange = async () => {
     if (!Array.isArray(obj.parts)) throw new Error('no parts array');
     state.parts = obj.parts;
     pushParts();
-    renderPartEditor();
+    renderPartEditor(true);
+    el.partsStatus.textContent = `Imported ${obj.parts.length} parts.`;
+
+    if (obj.kind === 'phonorealism-engraving') {
+      const res = await uploadAnnotations(obj);
+      el.scoreErr.classList.add('hidden');
+      el.partsStatus.textContent =
+        `Imported ${res.parts} parts and ${res.annotations} marks from the engraver.`;
+    }
   } catch (err) {
-    alert(`Could not read part map: ${err.message}`);
+    alert(`Could not read that file: ${err.message}`);
   }
 };
 

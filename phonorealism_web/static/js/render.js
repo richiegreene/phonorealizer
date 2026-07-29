@@ -11,6 +11,8 @@
  * room to see what is coming while still seeing what just happened.
  */
 
+import { fillRibbon } from '/shared/ribbon.js';
+
 const NOW_X = 0.34;
 
 /** Pitch pane takes the larger share; intonation needs the resolution more. */
@@ -35,6 +37,8 @@ const COLORS = {
   text: '#8b98a8',
   textBright: '#e6edf5',
   dim: '#5a6674',
+  annotation: '#f2f6fa',
+  annotationDim: 'rgba(200, 214, 230, 0.55)',
   good: '#3ddc84',
   near: '#ffd23f',
   off: '#ff6b6b',
@@ -81,6 +85,9 @@ export class PerformanceView {
     this.time = 0;
     this.live = []; // {t, cents, amp, conf}
     this.liveLimit = 4000;
+
+    /** Engraved marks for this performer's part, plus every global one. */
+    this.annotations = [];
 
     this.notated = null; // {hz, cents, amp} at `time`
     this.deviation = null; // cents, live minus notated
@@ -286,6 +293,7 @@ export class PerformanceView {
       g.restore();
     }
 
+    this._drawAnnotations();
     this._drawNowLine();
     this._drawReadout();
     if (this.countdown != null) this._drawCountdown();
@@ -413,73 +421,7 @@ export class PerformanceView {
    * @param {Array<[number,number,number]>} pts [x, y, width] triples
    */
   _fillRibbon(pts, fill) {
-    const n = pts.length;
-    if (n < 2) return;
-    const g = this.ctx;
-
-    // Smooth the width channel before offsetting.
-    //
-    // The display samples at roughly one point per two pixels, which at normal
-    // zoom lands close to the score's own 11.6 ms analysis frame. Sampling a
-    // noisy per-frame amplitude at nearly its own rate aliases that noise into
-    // a coarse sawtooth along the ribbon edge — an artefact of the analysis
-    // resolution, not something the composer wrote. A short moving average
-    // removes it while leaving the envelope's actual shape intact.
-    const R = 2; // half-window, i.e. 5 samples
-    const wSm = new Float64Array(n);
-    for (let i = 0; i < n; i++) {
-      let sum = 0;
-      let count = 0;
-      for (let k = i - R; k <= i + R; k++) {
-        if (k < 0 || k >= n) continue;
-        sum += pts[k][2];
-        count++;
-      }
-      wSm[i] = sum / count;
-    }
-
-    const top = new Array(n);
-    const bottom = new Array(n);
-    for (let i = 0; i < n; i++) {
-      let tx;
-      let ty;
-      if (i === 0) {
-        tx = pts[1][0] - pts[0][0];
-        ty = pts[1][1] - pts[0][1];
-      } else if (i === n - 1) {
-        tx = pts[i][0] - pts[i - 1][0];
-        ty = pts[i][1] - pts[i - 1][1];
-      } else {
-        const ax = pts[i][0] - pts[i - 1][0];
-        const ay = pts[i][1] - pts[i - 1][1];
-        const bx = pts[i + 1][0] - pts[i][0];
-        const by = pts[i + 1][1] - pts[i][1];
-        const la = Math.hypot(ax, ay) || 1;
-        const lb = Math.hypot(bx, by) || 1;
-        tx = ax / la + bx / lb;
-        ty = ay / la + by / lb;
-      }
-      let len = Math.hypot(tx, ty);
-      if (len < 1e-6) {
-        tx = 1;
-        ty = 0;
-        len = 1;
-      }
-      // Perpendicular to the tangent.
-      const nx = -ty / len;
-      const ny = tx / len;
-      const half = wSm[i] / 2;
-      top[i] = [pts[i][0] + nx * half, pts[i][1] + ny * half];
-      bottom[i] = [pts[i][0] - nx * half, pts[i][1] - ny * half];
-    }
-
-    g.beginPath();
-    g.moveTo(top[0][0], top[0][1]);
-    for (let i = 1; i < n; i++) g.lineTo(top[i][0], top[i][1]);
-    for (let i = n - 1; i >= 0; i--) g.lineTo(bottom[i][0], bottom[i][1]);
-    g.closePath();
-    g.fillStyle = fill;
-    g.fill();
+    fillRibbon(this.ctx, pts, fill);
   }
 
   /** Draw notated partials as justidraw-style ribbons. */
@@ -662,6 +604,68 @@ export class PerformanceView {
       }
       g.stroke();
     }
+  }
+
+  /**
+   * Engraved text scrolling with the part: lyrics, expression, rehearsal marks.
+   *
+   * Placed against the notated line rather than at a fixed height, so a lyric
+   * stays under its note as the part leaps — but clamped into the pane, because
+   * a mark that scrolls off the top is worse than one sitting slightly high.
+   */
+  _drawAnnotations() {
+    if (!this.annotations.length) return;
+    const g = this.ctx;
+    const [tA, tB] = this._bounds();
+
+    for (const a of this.annotations) {
+      if (a.t < tA || a.t > tB) continue;
+      const x = this.xFor(a.t);
+      const size = Math.max(11, (a.style?.size || 13) - 1);
+      const isLyric = a.kind === 'lyric';
+      g.font =
+        `${a.style?.bold ? '600 ' : ''}${a.style?.italic ? 'italic ' : ''}` +
+        `${size}px ${isLyric ? 'Georgia, serif' : 'system-ui, sans-serif'}`;
+
+      const cents = this.notatedCentsAt(a.t);
+      const base =
+        cents == null ? this.pitchHeight / 2 : this.yForCents(cents);
+      const off = a.place === 'above' ? -22 : a.place === 'below' ? 26 : 4;
+      const y = Math.min(this.pitchHeight - 6, Math.max(size + 6, base + off));
+
+      const label = a.text || '';
+      const w = g.measureText(label).width;
+
+      if (a.t2 != null && a.t2 > a.t) {
+        g.strokeStyle = COLORS.annotationDim;
+        g.lineWidth = 1;
+        g.beginPath();
+        g.moveTo(x, y + 3);
+        g.lineTo(this.xFor(a.t2), y + 3);
+        g.stroke();
+      }
+
+      // Scrim, so text stays readable where it crosses a ribbon.
+      g.fillStyle = 'rgba(11, 13, 16, 0.72)';
+      g.fillRect(x - 4, y - size, w + 8, size + 6);
+      if (a.kind === 'rehearsal') {
+        g.strokeStyle = COLORS.annotation;
+        g.lineWidth = 1.2;
+        g.strokeRect(x - 4, y - size, w + 8, size + 6);
+      }
+      g.fillStyle = COLORS.annotation;
+      g.fillText(label, x, y);
+    }
+  }
+
+  /** Pitch of the loudest own partial at an arbitrary time, in cents. */
+  notatedCentsAt(t) {
+    let best = null;
+    for (const p of this.partials) {
+      const s = sampleForRender(p, t, 0);
+      if (s && s.f > 0 && (!best || s.a > best.a)) best = s;
+    }
+    return best ? 1200 * Math.log2(best.f / 440) : null;
   }
 
   _drawNowLine() {

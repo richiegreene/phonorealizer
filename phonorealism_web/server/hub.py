@@ -41,6 +41,12 @@ ROOT = Path(__file__).resolve().parent.parent
 STATIC = ROOT / "static"
 DATA = ROOT / "data"
 
+# The score model (justidraw reader, canonical partial numbering) is shared with
+# phonorealism_engraver rather than copied into each. Two copies could drift,
+# and if their numbering ever disagreed a part map saying "partial 7" would
+# silently name different lines in the two applications.
+SHARED = ROOT.parent / "phonorealism_shared" / "js"
+
 # Refuse absurd uploads; a dense 10-minute score is a few MB.
 MAX_SCORE_BYTES = 64 * 1024 * 1024
 
@@ -224,6 +230,60 @@ async def post_score(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True, "meta": session.score_meta})
 
 
+_annotations_cache: dict | None = None
+
+
+@app.get("/api/annotations")
+async def get_annotations() -> Response:
+    """The engraving layer: lyrics and markings the performers should read."""
+    if _annotations_cache is None:
+        return JSONResponse({"annotations": [], "parts": []})
+    return JSONResponse(_annotations_cache)
+
+
+@app.post("/api/annotations")
+async def post_annotations(request: Request) -> JSONResponse:
+    """
+    Accept an engraving project from phonorealism_engraver.
+
+    The engraver owns the part map, so importing one also adopts its parts —
+    that is the whole point of the handoff, and leaving the two to disagree
+    would mean performers picking from a list that no longer matches the marks.
+    """
+    global _annotations_cache
+    raw = await request.body()
+    if len(raw) > MAX_SCORE_BYTES:
+        return JSONResponse({"error": "too large"}, status_code=413)
+    try:
+        doc = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        return JSONResponse({"error": f"bad JSON: {exc}"}, status_code=400)
+    if not isinstance(doc, dict) or doc.get("kind") != "phonorealism-engraving":
+        return JSONResponse({"error": "not an engraving document"}, status_code=400)
+
+    _annotations_cache = doc
+    if doc.get("parts"):
+        session.parts = doc["parts"]
+        # Part ids may have changed; stale claims would point at nothing.
+        valid = {p.get("id") for p in doc["parts"]}
+        for c in session.clients.values():
+            if c.part_id not in valid:
+                c.part_id = None
+                c.ready = False
+
+    DATA.mkdir(exist_ok=True)
+    try:
+        (DATA / "annotations.json").write_text(json.dumps(doc))
+    except OSError as exc:  # pragma: no cover
+        print(f"[hub] could not cache annotations: {exc}", file=sys.stderr)
+
+    await session.broadcast({"type": "annotationsChanged"})
+    await session.push_state()
+    return JSONResponse(
+        {"ok": True, "parts": len(doc.get("parts") or []), "annotations": len(doc.get("annotations") or [])}
+    )
+
+
 @app.get("/api/qr")
 async def qr(url: str) -> Response:
     """QR for the join URL. Optional: falls back to plain text if segno is absent."""
@@ -400,6 +460,7 @@ def _num(v: Any) -> float | None:
 
 
 app.mount("/static", StaticFiles(directory=STATIC), name="static")
+app.mount("/shared", StaticFiles(directory=SHARED), name="shared")
 
 
 # --------------------------------------------------------------------------- #

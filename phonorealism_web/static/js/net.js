@@ -217,6 +217,23 @@ export async function uploadScore(scoreJSON) {
   return res.json();
 }
 
+/** The engraving layer, if the conductor has imported one. */
+export async function fetchAnnotations() {
+  const res = await fetch('/api/annotations', { cache: 'no-store' });
+  if (!res.ok) return null;
+  return res.json();
+}
+
+export async function uploadAnnotations(doc) {
+  const res = await fetch('/api/annotations', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(doc),
+  });
+  if (!res.ok) throw new Error((await res.json()).error || `HTTP ${res.status}`);
+  return res.json();
+}
+
 export async function fetchScore() {
   const res = await fetch('/api/score', { cache: 'no-store' });
   if (res.status === 404) return null;
