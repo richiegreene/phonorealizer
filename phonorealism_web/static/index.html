@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b0d10" />
+    <title>Phonorealism Perform</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230b0d10'/><path d='M3 21 Q9 5 16 16 T29 11' stroke='%234da3ff' stroke-width='3' fill='none' stroke-linecap='round'/><path d='M3 26 Q11 22 16 26 T29 24' stroke='%23ffb648' stroke-width='2' fill='none' stroke-linecap='round'/></svg>" />
+    <link rel="stylesheet" href="/static/css/app.css" />
+  </head>
+  <body>
+    <div class="bar">
+      <div>
+        <div class="title">Phonorealism Perform</div>
+        <div class="subtitle">synchronised in-ear monitoring for spectral parts</div>
+      </div>
+    </div>
+
+    <main class="scroll">
+      <div class="choose">
+        <a class="card" href="/performer">
+          <h3>I am playing</h3>
+          <div class="lede">
+            Choose your part, let the page hear your instrument, and follow the
+            scrolling score. You will hear your own line, and as much of the rest
+            of the ensemble as you want behind it.
+          </div>
+        </a>
+
+        <a class="card" href="/conductor">
+          <h3>I am conducting</h3>
+          <div class="lede">
+            Load a justidraw <code>.sav</code> or a phonorealizer CSV, group the
+            partials into named parts, watch everyone's readiness and sync
+            quality, then start the downbeat for the whole ensemble at once.
+          </div>
+        </a>
+
+        <div class="hint">
+          Nothing is streamed between devices. The hub distributes the score and
+          a single timestamp for the downbeat; from there every device plays from
+          its own clock.
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

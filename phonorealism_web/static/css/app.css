@@ -1,0 +1,490 @@
+/*
+ * app.css — dark by default and not themeable.
+ *
+ * This is worn on a music stand in a darkened hall. A light theme would blind
+ * the player next to you and destroy your own dark adaptation, so there is no
+ * light mode here on purpose.
+ */
+
+:root {
+  --bg: #0b0d10;
+  --panel: #12161b;
+  --panel-2: #171c23;
+  --edge: #232a33;
+  --text: #e6edf5;
+  --muted: #8b98a8;
+  --dim: #5a6674;
+  --accent: #4da3ff;
+  --live: #ffb648;
+  --good: #3ddc84;
+  --near: #ffd23f;
+  --bad: #ff6b6b;
+  --radius: 10px;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+code,
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+/* ---------- shell ---------- */
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--edge);
+  flex: 0 0 auto;
+  min-height: 52px;
+}
+
+.bar .spacer {
+  flex: 1;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.subtitle {
+  font-size: 11px;
+  color: var(--muted);
+}
+
+main {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.pad {
+  padding: 18px;
+}
+
+.scroll {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* ---------- controls ---------- */
+
+button,
+.btn {
+  appearance: none;
+  border: 1px solid var(--edge);
+  background: var(--panel-2);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 10px 14px;
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+  /* Fingers, in low light, possibly wearing gloves. */
+  min-height: 44px;
+  touch-action: manipulation;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--dim);
+}
+
+button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #06121f;
+  font-weight: 600;
+}
+
+button.danger {
+  background: transparent;
+  border-color: var(--bad);
+  color: var(--bad);
+}
+
+button.go {
+  background: var(--good);
+  border-color: var(--good);
+  color: #04180d;
+  font-weight: 700;
+  font-size: 17px;
+  min-height: 60px;
+}
+
+button.ghost {
+  background: transparent;
+}
+
+button.sm {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+input[type="text"],
+input[type="number"],
+select {
+  background: var(--panel-2);
+  border: 1px solid var(--edge);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 16px; /* iOS zooms the page for anything smaller */
+  font-family: inherit;
+  min-height: 44px;
+  width: 100%;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+  height: 34px;
+}
+
+label.field {
+  display: block;
+  margin-bottom: 12px;
+}
+
+label.field > span {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.row.wrap {
+  flex-wrap: wrap;
+}
+
+/* ---------- cards & lists ---------- */
+
+.card {
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: 14px;
+  margin-bottom: 12px;
+}
+
+.card h2 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--muted);
+  margin-bottom: 10px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/*
+ * A score can carry dozens of partials, and one row each would push the
+ * readiness grid and the Start button off the bottom of the conductor's screen.
+ * Those two have to stay reachable without scrolling during a rehearsal, so the
+ * long lists scroll inside themselves instead of growing the page.
+ */
+#partEditor,
+#partList {
+  max-height: 42vh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding-right: 4px;
+}
+
+.part {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--panel-2);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  min-height: 56px;
+}
+
+.part.selected {
+  border-color: var(--accent);
+  background: rgba(77, 163, 255, 0.12);
+}
+
+.part.taken {
+  opacity: 0.55;
+}
+
+.part .name {
+  font-weight: 600;
+  font-size: 15px;
+}
+
+.part .meta {
+  font-size: 11px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.part .who {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--live);
+  text-align: right;
+}
+
+/* ---------- status ---------- */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px solid var(--edge);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dim);
+  flex: 0 0 auto;
+}
+
+.dot.good {
+  background: var(--good);
+}
+.dot.fair {
+  background: var(--near);
+}
+.dot.poor,
+.dot.bad {
+  background: var(--bad);
+}
+
+.hint {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.warn {
+  background: rgba(255, 107, 107, 0.1);
+  border: 1px solid rgba(255, 107, 107, 0.35);
+  color: #ffb3b3;
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+}
+
+.note {
+  background: rgba(77, 163, 255, 0.08);
+  border: 1px solid rgba(77, 163, 255, 0.28);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin-bottom: 12px;
+  color: #bcd9ff;
+}
+
+/* ---------- performance view ---------- */
+
+#stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  position: relative;
+}
+
+#view {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(11, 13, 16, 0.9);
+  padding: 24px;
+  text-align: center;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.overlay.hidden,
+.hidden {
+  display: none !important;
+}
+
+/* ---------- conductor grid ---------- */
+
+.players {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 10px;
+}
+
+.player {
+  background: var(--panel-2);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: 12px;
+}
+
+.player.ready {
+  border-color: rgba(61, 220, 132, 0.5);
+}
+
+.player .who {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 2px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.player .part-name {
+  font-size: 12px;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.player .stats {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.meter {
+  height: 4px;
+  background: var(--edge);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+
+.meter > i {
+  display: block;
+  height: 100%;
+  background: var(--live);
+  width: 0;
+}
+
+.big {
+  font-size: 26px;
+  font-weight: 600;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.qr {
+  background: var(--panel-2);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: 12px;
+  display: inline-block;
+  line-height: 0;
+}
+
+.qr svg {
+  width: 180px;
+  height: 180px;
+  display: block;
+}
+
+.url {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+  word-break: break-all;
+  color: var(--text);
+}
+
+.choose {
+  display: grid;
+  gap: 14px;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: 32px 18px;
+}
+
+.choose a.card {
+  text-decoration: none;
+  color: inherit;
+  display: block;
+}
+
+.choose a.card:hover {
+  border-color: var(--accent);
+}
+
+.choose .lede {
+  font-size: 13px;
+  color: var(--muted);
+  line-height: 1.55;
+  margin-top: 6px;
+}

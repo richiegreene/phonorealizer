@@ -41,7 +41,11 @@ The modifier area of this tool box is designed to expand off of Michael Klingbei
 
 ## Performer
 
-This area of the toolbox is an in progress process to allow performer's with realtime feedback and video scrolling notation. Designed for phone interfaces on a given browser, the readout differs _Performers_ and _Conductor_, where a "conductor" is responsible for starting the playback for all players parts simultaenously.
+[`phonorealism_web`](phonorealism_web) is a browser-based in-ear monitoring system for ensembles playing this material. Designed for phone interfaces, it separates _Performers_ from a _Conductor_, where the conductor loads the score and starts playback for all players simultaneously.
+
+Each performer claims a part and gets their line re-synthesised into their earbuds — balanced against the rest of the ensemble — alongside a scrolling display comparing their live pitch and amplitude against what is written. It reads justidraw `.sav` files directly as well as the CSV exported here.
+
+Nothing is streamed between devices: the hub distributes the score and a single timestamp for the downbeat, and every device plays from its own clock thereafter. Sync accuracy is measured per device and shown live, so a bad network is visible before the downbeat rather than after it. See the [project README](phonorealism_web/README.md) for setup.
 <table>
   <tr>
     <td width="100%">

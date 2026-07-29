@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#0b0d10" />
+    <title>Perform — Phonorealism</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230b0d10'/><path d='M3 21 Q9 5 16 16 T29 11' stroke='%234da3ff' stroke-width='3' fill='none' stroke-linecap='round'/><path d='M3 26 Q11 22 16 26 T29 24' stroke='%23ffb648' stroke-width='2' fill='none' stroke-linecap='round'/></svg>" />
+    <link rel="stylesheet" href="/static/css/app.css" />
+  </head>
+  <body>
+    <div class="bar">
+      <div>
+        <div class="title" id="partTitle">No part</div>
+        <div class="subtitle" id="scoreName">waiting for score…</div>
+      </div>
+      <div class="spacer"></div>
+      <span class="pill" id="syncPill"><i class="dot"></i><span>sync</span></span>
+      <button class="sm ghost" id="settingsBtn">Setup</button>
+    </div>
+
+    <main>
+      <!-- Part selection -->
+      <section id="lobby" class="scroll pad">
+        <div id="insecureWarn" class="warn hidden">
+          <strong>This page cannot use the microphone.</strong>
+          Browsers only grant microphone access on a secure origin. Open this app
+          over <code>https://</code> (or on <code>localhost</code>) — a plain
+          <code>http://</code> LAN address will always be refused.
+        </div>
+
+        <div class="card">
+          <h2>Who are you</h2>
+          <label class="field">
+            <span>Name shown to the conductor</span>
+            <input type="text" id="nameInput" placeholder="e.g. Ana — flute" autocomplete="name" />
+          </label>
+        </div>
+
+        <div class="card">
+          <h2>Your part</h2>
+          <div id="partList" class="list">
+            <div class="hint">Waiting for the conductor to load a score…</div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Microphone</h2>
+          <div class="row wrap">
+            <button id="micBtn" class="primary">Enable microphone</button>
+            <button id="calBtn" class="sm" disabled>Calibrate level</button>
+          </div>
+          <div class="hint" id="micHint" style="margin-top: 10px">
+            Needed so the display can compare what you play against what is
+            written. Echo cancellation, noise suppression and auto gain are all
+            switched off — they would flatten the very dynamics being measured.
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Ready</h2>
+          <div class="row">
+            <button id="readyBtn" class="go" style="flex: 1" disabled>I'm ready</button>
+          </div>
+          <div class="hint" style="margin-top: 10px" id="readyStatus">
+            The conductor starts the downbeat for everyone. Keep this screen open.
+          </div>
+        </div>
+      </section>
+
+      <!-- Scrolling score -->
+      <section id="stage" class="hidden">
+        <canvas id="view"></canvas>
+        <div id="waiting" class="overlay">
+          <div class="big" id="waitingBig">Standing by</div>
+          <div class="hint" id="waitingHint">The conductor will start playback.</div>
+          <button class="sm ghost" id="backBtn">Change part</button>
+        </div>
+      </section>
+    </main>
+
+    <!-- Setup drawer -->
+    <section id="settings" class="scroll pad hidden">
+      <div class="card">
+        <h2>Monitor mix</h2>
+        <label class="field">
+          <span id="balLabel">Balance — your part ↔ ensemble</span>
+          <input type="range" id="balance" min="0" max="1" step="0.01" value="0.35" />
+        </label>
+        <label class="field">
+          <span id="volLabel">Volume</span>
+          <input type="range" id="volume" min="0" max="1" step="0.01" value="0.8" />
+        </label>
+      </div>
+
+      <div class="card">
+        <h2>Display</h2>
+        <label class="field">
+          <span id="winLabel">Time window</span>
+          <input type="range" id="timeWindow" min="2" max="20" step="0.5" value="6" />
+        </label>
+        <label class="field">
+          <span id="spanLabel">Pitch span</span>
+          <input type="range" id="pitchSpan" min="25" max="1200" step="25" value="150" />
+        </label>
+        <div class="row wrap">
+          <button class="sm" id="modeBtn">Mode: follow</button>
+          <button class="sm" id="ensembleBtn">Ensemble lines: off</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Tracking</h2>
+        <label class="field">
+          <span id="bandLabel">Search band around the written pitch</span>
+          <input type="range" id="band" min="1" max="48" step="1" value="7" />
+        </label>
+        <div class="hint">
+          Narrow keeps the tracker locked to your partial instead of jumping to a
+          louder neighbour. Widen it if you need to see how far off you actually are.
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Octave</h2>
+        <label class="field">
+          <span>Transpose what you hear and are measured against</span>
+          <select id="transpose">
+            <option value="0">As written</option>
+            <option value="-1200">Down one octave</option>
+            <option value="-2400">Down two octaves</option>
+            <option value="1200">Up one octave</option>
+          </select>
+        </label>
+        <div class="hint">
+          The desktop Perform window doubles the live pitch before comparing it to
+          the score, meaning players sound an octave below the written frequency.
+          That convention is not assumed here — set it explicitly if your score
+          uses it.
+        </div>
+      </div>
+
+      <div class="card">
+        <h2>Input</h2>
+        <label class="field">
+          <span>Microphone</span>
+          <select id="inputDevice"></select>
+        </label>
+        <label class="field">
+          <span id="gainLabel">Input gain</span>
+          <input type="range" id="inputGain" min="-20" max="40" step="1" value="0" />
+        </label>
+      </div>
+
+      <div class="row">
+        <button id="closeSettings" class="primary" style="flex: 1">Done</button>
+      </div>
+    </section>
+
+    <script type="module" src="/static/js/performer.js"></script>
+  </body>
+</html>
