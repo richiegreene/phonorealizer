@@ -15,7 +15,7 @@
 
 import { ribbonPath } from '/shared/ribbon.js';
 import { GLOBAL, KINDS } from '/shared/annotations.js';
-import { castOff, systemBands } from '/shared/layout.js';
+import { castOff, systemBands, timeMarkers, markerLabel } from '/shared/layout.js';
 
 const esc = (s) =>
   String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -76,6 +76,7 @@ export function buildSVG(score, project, opts = {}) {
       const bands = systemBands(sys, score, layout, y);
 
       for (const b of bands) {
+        const isFirstBand = b === bands[0];
         const yFor = (cents) =>
           b.top + b.height / 2 - ((cents - b.centre) / b.span) * (b.height / 2);
 
@@ -85,10 +86,47 @@ export function buildSVG(score, project, opts = {}) {
               `font-size="10" font-weight="600">${esc(b.part.name)}</text>`
           );
         }
-        if (layout.showStaffLines) {
+        if (layout.showStaffOutline) {
           body.push(
-            `<line x1="${x0}" y1="${(b.top + b.height).toFixed(1)}" x2="${x1}" y2="${(b.top + b.height).toFixed(1)}" stroke="#dddddd" stroke-width="0.5"/>`
+            `<line x1="${x0}" y1="${(b.top + b.height).toFixed(1)}" x2="${x1}" y2="${(b.top + b.height).toFixed(1)}" stroke="#c8c8c8" stroke-width="1"/>`
           );
+        }
+
+        // Time rules, drawn before the notation so the ribbon sits on top.
+        const rulesStyle = layout.rulesStyle || 'none';
+        if (rulesStyle !== 'none' || (layout.rulesLabels || 'none') !== 'none') {
+          const pxPerSecond = (x1 - x0) / Math.max(1e-6, sys.tB - sys.tA);
+          for (const mk of timeMarkers(sys.tA, sys.tB, {
+            rate: layout.rulesRate,
+            group: layout.rulesGroup,
+            pxPerSecond,
+          })) {
+            const mx = xFor(mk.t);
+            if (mx < x0 - 1 || mx > x1 + 1) continue;
+            const stroke = mk.strong ? '#000000' : '#000000';
+            const opacity = mk.strong ? 0.42 : 0.16;
+            const width = mk.strong ? 0.9 : 0.6;
+            if (rulesStyle === 'ticks') {
+              const len = Math.min(10, b.height * 0.16) * (mk.strong ? 1.6 : 1);
+              body.push(
+                `<line x1="${mx.toFixed(1)}" y1="${b.top.toFixed(1)}" x2="${mx.toFixed(1)}" y2="${(b.top + len).toFixed(1)}" stroke="${stroke}" stroke-opacity="${opacity}" stroke-width="${width}"/>`,
+                `<line x1="${mx.toFixed(1)}" y1="${(b.top + b.height - len).toFixed(1)}" x2="${mx.toFixed(1)}" y2="${(b.top + b.height).toFixed(1)}" stroke="${stroke}" stroke-opacity="${opacity}" stroke-width="${width}"/>`
+              );
+            } else if (rulesStyle !== 'none') {
+              const extra = rulesStyle === 'grid' ? layout.staffGap : 0;
+              body.push(
+                `<line x1="${mx.toFixed(1)}" y1="${b.top.toFixed(1)}" x2="${mx.toFixed(1)}" y2="${(b.top + b.height + extra).toFixed(1)}" stroke="${stroke}" stroke-opacity="${opacity}" stroke-width="${width}"/>`
+              );
+            }
+            if (isFirstBand && mk.strong) {
+              const label = markerLabel(mk, layout.rulesLabels, layout.rulesRate);
+              if (label) {
+                body.push(
+                  `<text x="${(mx + 2).toFixed(1)}" y="${(b.top - 3).toFixed(1)}" font-family="ui-monospace, Menlo, monospace" font-size="8" fill="#888">${esc(label)}</text>`
+                );
+              }
+            }
+          }
         }
 
         const dt = Math.max(0.004, across / (x1 - x0));

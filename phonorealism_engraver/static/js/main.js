@@ -548,11 +548,47 @@ for (const [key, label, fmt] of spacing) {
   };
 }
 
-for (const key of ['showPartLabels', 'showStaffLines', 'showTitle', 'showPageNumbers']) {
+for (const key of ['showPartLabels', 'showStaffOutline', 'showTitle', 'showPageNumbers']) {
   $(key).onchange = () => {
     editedLayout()[key] = $(key).checked;
     afterLayoutChange();
   };
+}
+
+/* ---- time rules ---- */
+
+for (const key of ['rulesStyle', 'rulesLabels']) {
+  $(key).onchange = () => {
+    editedLayout()[key] = $(key).value;
+    updateRulesLabels();
+    afterLayoutChange();
+  };
+}
+for (const key of ['rulesRate', 'rulesGroup']) {
+  $(key).oninput = () => {
+    editedLayout()[key] = parseFloat($(key).value);
+    updateRulesLabels();
+    afterLayoutChange();
+  };
+}
+
+/**
+ * Describe the rate in the terms that matter: a tempo, the interval it implies,
+ * and what the emphasised marker then lands on.
+ */
+function updateRulesLabels() {
+  const rate = parseFloat($('rulesRate').value) || 60;
+  const group = parseFloat($('rulesGroup').value) || 0;
+  const interval = 60 / rate;
+  $('rulesRateLabel').textContent =
+    `Rate — ${rate} bpm · a marker every ${interval < 1 ? `${(interval * 1000).toFixed(0)} ms` : `${interval.toFixed(2)} s`}`;
+  $('rulesGroupLabel').textContent = group
+    ? `Emphasise every ${group} · an accent every ${(interval * group).toFixed(2)} s`
+    : 'Emphasise — off, an even grid';
+  $('rulesHint').textContent =
+    $('rulesStyle').value === 'none' && $('rulesLabels').value === 'none'
+      ? 'No time reference is drawn.'
+      : 'Timestamps appear on the top staff of each system, at emphasised markers only.';
 }
 
 /* ---- page setup ---- */
@@ -865,9 +901,14 @@ function syncControls() {
     if (l[key] != null) $(key).value = l[key];
     $(`${key}Label`).textContent = `${label} — ${fmt(parseFloat($(key).value))}`;
   }
-  for (const key of ['showPartLabels', 'showStaffLines', 'showTitle', 'showPageNumbers']) {
+  for (const key of ['showPartLabels', 'showStaffOutline', 'showTitle', 'showPageNumbers']) {
     $(key).checked = !!l[key];
   }
+  $('rulesStyle').value = l.rulesStyle || 'none';
+  $('rulesRate').value = l.rulesRate ?? 60;
+  $('rulesGroup').value = l.rulesGroup ?? 4;
+  $('rulesLabels').value = l.rulesLabels || 'seconds';
+  updateRulesLabels();
   $('pageSize').value = l.pageSize || 'a4';
   $('orientation').value = l.orientation || 'landscape';
   $('margin').value = l.margin ?? 54;

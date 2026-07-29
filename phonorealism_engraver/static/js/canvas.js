@@ -17,7 +17,10 @@
 
 import { fillRibbon } from '/shared/ribbon.js';
 import { GLOBAL, KINDS } from '/shared/annotations.js';
-import { castOff, systemBands, orderedParts, layoutFor, pageGeometry } from '/shared/layout.js';
+import {
+  castOff, systemBands, orderedParts, layoutFor, pageGeometry,
+  timeMarkers, markerLabel,
+} from '/shared/layout.js';
 
 const C = {
   bg: '#0f1216',
@@ -129,14 +132,7 @@ export class EngraveCanvas extends EventTarget {
     const ink = opts.ink;
     const yFor = (cents) => b.top + b.height / 2 - ((cents - b.centre) / b.span) * (b.height / 2);
 
-    if (layout.showStaffLines) {
-      g.strokeStyle = ink === 'paper' ? '#dddddd' : C.rule;
-      g.lineWidth = 0.5;
-      g.beginPath();
-      g.moveTo(opts.x0, b.top + b.height);
-      g.lineTo(opts.x1, b.top + b.height);
-      g.stroke();
-    }
+    this._drawRules(b, xFor, tA, tB, opts);
 
     if (layout.showPartLabels && opts.showLabel) {
       g.fillStyle = ink === 'paper' ? '#111' : C.labelBright;
@@ -229,6 +225,79 @@ export class EngraveCanvas extends EventTarget {
     }
   }
 
+  /**
+   * Time rules: pseudo-barlines at a chosen rate, with optional timestamps.
+   *
+   * Drawn behind the notation so the ribbon always reads on top of them.
+   */
+  _drawRules(b, xFor, tA, tB, opts) {
+    const g = this.ctx;
+    const layout = this.layout;
+    const paper = opts.ink === 'paper';
+    const scale = opts.textScale || 1;
+
+    if (layout.showStaffOutline) {
+      g.strokeStyle = paper ? '#c8c8c8' : 'rgba(150,168,190,0.55)';
+      g.lineWidth = 1;
+      g.beginPath();
+      g.moveTo(opts.x0, b.top + b.height + 0.5);
+      g.lineTo(opts.x1, b.top + b.height + 0.5);
+      g.stroke();
+    }
+
+    const style = layout.rulesStyle || 'none';
+    if (style === 'none' && (layout.rulesLabels || 'none') === 'none') return;
+
+    const pxPerSecond = (opts.x1 - opts.x0) / Math.max(1e-6, tB - tA);
+    const marks = timeMarkers(tA, tB, {
+      rate: layout.rulesRate,
+      group: layout.rulesGroup,
+      pxPerSecond,
+    });
+    if (!marks.length) return;
+
+    for (const m of marks) {
+      const x = xFor(m.t);
+      if (x < opts.x0 - 1 || x > opts.x1 + 1) continue;
+      const strong = m.strong;
+
+      if (style !== 'none') {
+        g.strokeStyle = paper
+          ? strong ? 'rgba(0,0,0,0.42)' : 'rgba(0,0,0,0.16)'
+          : strong ? 'rgba(190,208,230,0.55)' : 'rgba(150,168,190,0.22)';
+        g.lineWidth = strong ? 1.2 : 0.8;
+        g.beginPath();
+        if (style === 'ticks') {
+          // Short marks at the staff edges: a time reference that stays out of
+          // the way of the notation between them.
+          const len = Math.min(10, b.height * 0.16) * (strong ? 1.6 : 1);
+          g.moveTo(x, b.top);
+          g.lineTo(x, b.top + len);
+          g.moveTo(x, b.top + b.height - len);
+          g.lineTo(x, b.top + b.height);
+        } else {
+          // barlines span the staff; grid carries on into the gap below so the
+          // lines read as continuous down the system.
+          const extra = style === 'grid' ? layout.staffGap * (opts.textScale || 1) : 0;
+          g.moveTo(x, b.top);
+          g.lineTo(x, b.top + b.height + extra);
+        }
+        g.stroke();
+      }
+
+      // Labels only on the top staff of a system — repeating them on every
+      // staff is clutter, not information.
+      if (opts.isFirst && strong) {
+        const label = markerLabel(m, layout.rulesLabels, layout.rulesRate);
+        if (label) {
+          g.font = `${9 * scale}px ui-monospace, Menlo, monospace`;
+          g.fillStyle = paper ? '#777' : C.label;
+          g.fillText(label, x + 2 * scale, b.top - 3 * scale);
+        }
+      }
+    }
+  }
+
   /* ---------------- galley ---------------- */
 
   get plotW() {
@@ -283,6 +352,7 @@ export class EngraveCanvas extends EventTarget {
         x1: this.w,
         labelX: 8,
         showLabel: true,
+        isFirst: b === bands[0],
         tFor: (x) => this.tForGalley(x),
       });
       g.restore();
@@ -422,6 +492,7 @@ export class EngraveCanvas extends EventTarget {
             x1: sx1,
             labelX: x0 + page.margin * z,
             showLabel: true,
+            isFirst: b === bands[0],
             textScale: z,
             tFor,
           });

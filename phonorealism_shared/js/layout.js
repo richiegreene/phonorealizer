@@ -71,11 +71,23 @@ export function defaultLayout() {
      * and running heads are additions the engraver should opt into rather than
      * have to strip out of every export.
      */
-    showStaffLines: false,
-    showBarlines: false,
     showTitle: false,
     showPageNumbers: false,
     showPartLabels: true,
+
+    /* --- time rules (see timeMarkers) --- */
+    rulesStyle: 'none', // none | ticks | barlines | grid
+    /**
+     * Marker rate as a tempo: 60 puts a marker every second, 120 every half
+     * second. Expressed in BPM because that is the unit this music is actually
+     * cued against, even though it has no metre of its own.
+     */
+    rulesRate: 60,
+    /** Emphasise every Nth marker, giving a pulse. 0 for an even grid. */
+    rulesGroup: 4,
+    rulesLabels: 'seconds', // none | seconds | mmss | count
+    /** The horizontal rule under a staff. Off by default; it carries no data. */
+    showStaffOutline: false,
 
     /** Lowest-sounding part at the bottom, as in a conventional score. */
     lowestAtBottom: true,
@@ -130,6 +142,60 @@ export function layoutFor(project, target = 'score') {
 /** Which profile key a target edits. */
 export function profileKeyFor(target) {
   return target === 'score' ? 'score' : 'parts';
+}
+
+/**
+ * Time markers across a span: pseudo-barlines at a chosen rate.
+ *
+ * This music has no metre, so nothing derives a barline for us. What a player
+ * can actually use is a regular time reference, and the natural unit to specify
+ * it in is tempo — 60 gives one marker a second, 120 one every half second.
+ * Grouping emphasises every Nth marker so the eye gets a pulse rather than an
+ * undifferentiated comb.
+ *
+ * @param {number} pxPerSecond used to thin markers that would collide
+ * @returns {Array<{t:number, index:number, strong:boolean}>}
+ */
+export function timeMarkers(tA, tB, { rate = 60, group = 4, pxPerSecond = 40 } = {}) {
+  const interval = 60 / Math.max(1, rate);
+  if (!(interval > 0) || !Number.isFinite(interval)) return [];
+
+  // Below roughly 5 px apart the markers stop reading as separate lines and
+  // start reading as a fill, so thin to the emphasised ones and then give up
+  // entirely rather than blacking out the staff.
+  const spacing = interval * pxPerSecond;
+  let step = 1;
+  if (spacing < 5) {
+    if (!group || group * spacing < 5) return [];
+    step = group;
+  }
+
+  const out = [];
+  const first = Math.ceil(tA / interval - 1e-9);
+  const last = Math.floor(tB / interval + 1e-9);
+  for (let i = first; i <= last; i++) {
+    if (i % step !== 0) continue;
+    out.push({
+      t: i * interval,
+      index: i,
+      strong: !!group && i % group === 0,
+    });
+  }
+  return out;
+}
+
+/** Label for a marker, in the requested format. */
+export function markerLabel(marker, mode, rate = 60) {
+  if (mode === 'none' || !mode) return '';
+  if (mode === 'count') return String(marker.index);
+  const t = marker.t;
+  if (mode === 'mmss') {
+    const m = Math.floor(t / 60);
+    const sec = t - m * 60;
+    return `${m}:${sec < 10 ? '0' : ''}${sec.toFixed(sec % 1 ? 1 : 0)}`;
+  }
+  // seconds
+  return `${t.toFixed(t % 1 ? 1 : 0)}s`;
 }
 
 /**

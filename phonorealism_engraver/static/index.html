@@ -169,6 +169,40 @@
           </details>
 
           <details class="group" open>
+            <summary>Time rules</summary>
+            <div class="body">
+              <label class="field">
+                <span>Style</span>
+                <select id="rulesStyle">
+                  <option value="none">None</option>
+                  <option value="ticks">Ticks at staff edges</option>
+                  <option value="barlines">Barlines through the staff</option>
+                  <option value="grid">Grid through the system</option>
+                </select>
+              </label>
+              <label class="field">
+                <span id="rulesRateLabel">Rate</span>
+                <input type="range" id="rulesRate" min="6" max="480" step="1" value="60" />
+              </label>
+              <label class="field">
+                <span id="rulesGroupLabel">Emphasise every</span>
+                <input type="range" id="rulesGroup" min="0" max="16" step="1" value="4" />
+              </label>
+              <label class="field">
+                <span>Timestamps</span>
+                <select id="rulesLabels">
+                  <option value="none">None</option>
+                  <option value="seconds">Seconds</option>
+                  <option value="mmss">Minutes:seconds</option>
+                  <option value="count">Marker number</option>
+                </select>
+              </label>
+              <label class="check"><input type="checkbox" id="showStaffOutline" /><span>Rule beneath each staff</span></label>
+              <div class="hint" id="rulesHint"></div>
+            </div>
+          </details>
+
+          <details class="group" open>
             <summary>Breaks</summary>
             <div class="body">
               <label class="field">
@@ -192,7 +226,6 @@
             <summary>Page furniture</summary>
             <div class="body">
               <label class="check"><input type="checkbox" id="showPartLabels" checked /><span>Part names</span></label>
-              <label class="check"><input type="checkbox" id="showStaffLines" /><span>Staff rules</span></label>
               <label class="check"><input type="checkbox" id="showTitle" /><span>Title on first page</span></label>
               <label class="check"><input type="checkbox" id="showPageNumbers" /><span>Page numbers</span></label>
               <div class="hint">All off by default — the notation is the ribbon.</div>
