@@ -11,7 +11,7 @@
  * Both share the casting-off engine and the band geometry in shared/layout.js,
  * so a page break placed here lands in the same place on paper.
  *
- * The surface carries no rules, barlines or grid by default. The notation is
+ * The surface carries no grid, barlines or rules by default. The notation is
  * the ribbon; furniture is something to opt into, not to strip out later.
  */
 
@@ -19,7 +19,8 @@ import { fillRibbon } from '/shared/ribbon.js';
 import { GLOBAL, KINDS } from '/shared/annotations.js';
 import {
   castOff, systemBands, orderedParts, layoutFor, pageGeometry,
-  timeMarkers, markerLabel,
+  timeMarkers, markerLabel, pitchGrid, yForBand, centsForBand,
+  annotationY, partLabelFor, tickRow,
 } from '/shared/layout.js';
 
 const C = {
@@ -130,14 +131,25 @@ export class EngraveCanvas extends EventTarget {
     const g = this.ctx;
     const layout = this.layout;
     const ink = opts.ink;
-    const yFor = (cents) => b.top + b.height / 2 - ((cents - b.centre) / b.span) * (b.height / 2);
+    const scale = opts.textScale || 1;
+    const yFor = (cents) => yForBand(b, cents);
 
     this._drawRules(b, xFor, tA, tB, opts);
 
     if (layout.showPartLabels && opts.showLabel) {
+      // Sized by the engraving setting alone, not by the zoom: a name that grew
+      // and shrank with the view could not be judged against the page.
+      const size = layout.partLabelSize || 10;
       g.fillStyle = ink === 'paper' ? '#111' : C.labelBright;
-      g.font = '600 11px system-ui, sans-serif';
-      g.fillText(b.part.name, opts.labelX, b.top + 13);
+      g.font = `600 ${size}px system-ui, sans-serif`;
+      // Centred on the part's contents rather than hung from the top of the
+      // staff, so it stays against the music when normalised heights make every
+      // system a different shape.
+      g.fillText(
+        partLabelFor(b.part, opts.systemIndex || 0),
+        opts.labelX,
+        b.coreTop + b.coreH / 2 + size * 0.35
+      );
     }
 
     // ribbons
@@ -158,11 +170,13 @@ export class EngraveCanvas extends EventTarget {
           continue;
         }
         const y = yFor(1200 * Math.log2(s.f / 440));
-        if (y < b.top - b.height || y > b.top + b.height * 2) {
+        if (y < b.coreTop - b.coreH || y > b.coreTop + b.coreH * 2) {
           flush();
           continue;
         }
-        run.push([xFor(t), y, 0.4 + (Math.max(0, s.a) / b.ampRef) * layout.ribbonScale]);
+        // Thickness follows the zoom, so the page on screen is the page that
+        // prints rather than the same staves carrying heavier ink.
+        run.push([xFor(t), y, 0.4 + (Math.max(0, s.a) / b.ampRef) * layout.ribbonScale * scale]);
       }
       flush();
     }
@@ -174,7 +188,7 @@ export class EngraveCanvas extends EventTarget {
       const def = KINDS[a.kind] || KINDS.text;
       const isGlobal = a.scope === GLOBAL;
       const selected = a.id === this.selectedId;
-      const size = (a.style?.size || def.size || 13) * (opts.textScale || 1);
+      const size = (a.style?.size || def.size || 13) * scale;
 
       let cents = null;
       let best = null;
@@ -183,12 +197,8 @@ export class EngraveCanvas extends EventTarget {
         if (s && s.f > 0 && (!best || s.a > best.a)) best = s;
       }
       if (best) cents = 1200 * Math.log2(best.f / 440);
-      const base = cents == null ? b.top + b.height / 2 : yFor(cents);
-      const off = a.place === 'above' ? -18 : a.place === 'below' ? 22 : 3;
-      const y = Math.min(
-        b.top + b.height - 4,
-        Math.max(b.top + size + 2, base + off - (a.dy / b.span) * (b.height / 2))
-      );
+      const base = cents == null ? b.coreTop + b.coreH / 2 : yFor(cents);
+      const y = annotationY(b, a, size, base, scale);
       const x = xFor(a.t);
 
       g.font =
@@ -226,7 +236,51 @@ export class EngraveCanvas extends EventTarget {
   }
 
   /**
-   * Time rules: pseudo-barlines at a chosen rate, with optional timestamps.
+   * The horizontal grid: pitch guidelines across the staff.
+   *
+   * Drawn first of everything, so the notation always reads on top of it.
+   */
+  _drawPitchGrid(b, opts) {
+    const layout = this.layout;
+    const mode = layout.pitchGrid || 'none';
+    if (mode === 'none') return;
+
+    const g = this.ctx;
+    const paper = opts.ink === 'paper';
+    const grid = pitchGrid(b.centre - b.span, b.centre + b.span, b.pxPerCent, mode);
+    const yTopEdge = b.coreTop;
+    const yBotEdge = b.coreTop + b.coreH;
+    const alpha = Math.max(0, Math.min(1, layout.pitchGridOpacity ?? 0.1));
+
+    if (grid.bands.length && alpha > 0.001) {
+      // On paper the chromatic regions are literally darker. On the dark
+      // surface, darkening the ground would show nothing, so they are tinted
+      // instead — the same reading of which regions are the black notes.
+      g.fillStyle = paper ? `rgba(0,0,0,${alpha})` : `rgba(190,208,230,${alpha})`;
+      for (const band of grid.bands) {
+        const top = Math.max(yTopEdge, yForBand(b, band.c1));
+        const bottom = Math.min(yBotEdge, yForBand(b, band.c0));
+        if (bottom - top > 0.15) g.fillRect(opts.x0, top, opts.x1 - opts.x0, bottom - top);
+      }
+    }
+
+    for (const line of grid.lines) {
+      const y = yForBand(b, line.cents);
+      if (y < yTopEdge - 0.5 || y > yBotEdge + 0.5) continue;
+      g.strokeStyle = paper
+        ? line.strong ? 'rgba(0,0,0,0.32)' : 'rgba(0,0,0,0.13)'
+        : line.strong ? 'rgba(190,208,230,0.42)' : 'rgba(150,168,190,0.18)';
+      g.lineWidth = line.strong ? 1 : 0.7;
+      g.beginPath();
+      g.moveTo(opts.x0, y);
+      g.lineTo(opts.x1, y);
+      g.stroke();
+    }
+  }
+
+  /**
+   * The vertical grid: pseudo-barlines at a chosen rate, with optional
+   * timestamps, and the pitch grid underneath them.
    *
    * Drawn behind the notation so the ribbon always reads on top of them.
    */
@@ -236,12 +290,14 @@ export class EngraveCanvas extends EventTarget {
     const paper = opts.ink === 'paper';
     const scale = opts.textScale || 1;
 
+    this._drawPitchGrid(b, opts);
+
     if (layout.showStaffOutline) {
       g.strokeStyle = paper ? '#c8c8c8' : 'rgba(150,168,190,0.55)';
       g.lineWidth = 1;
       g.beginPath();
-      g.moveTo(opts.x0, b.top + b.height + 0.5);
-      g.lineTo(opts.x1, b.top + b.height + 0.5);
+      g.moveTo(opts.x0, b.coreTop + b.coreH + 0.5);
+      g.lineTo(opts.x1, b.coreTop + b.coreH + 0.5);
       g.stroke();
     }
 
@@ -268,19 +324,16 @@ export class EngraveCanvas extends EventTarget {
         g.lineWidth = strong ? 1.2 : 0.8;
         g.beginPath();
         if (style === 'ticks') {
-          // Short marks at the staff edges: a time reference that stays out of
-          // the way of the notation between them.
-          const len = Math.min(10, b.height * 0.16) * (strong ? 1.6 : 1);
-          g.moveTo(x, b.top);
-          g.lineTo(x, b.top + len);
-          g.moveTo(x, b.top + b.height - len);
-          g.lineTo(x, b.top + b.height);
+          // One short row of marks: a time reference that stays out of the way
+          // of the notation. Where the row sits is the engraver's choice, since
+          // which edge is clear of the music depends on the music.
+          const { top, len } = tickRow(b, layout, strong, scale);
+          g.moveTo(x, top);
+          g.lineTo(x, top + len);
         } else {
-          // barlines span the staff; grid carries on into the gap below so the
-          // lines read as continuous down the system.
-          const extra = style === 'grid' ? layout.staffGap * (opts.textScale || 1) : 0;
-          g.moveTo(x, b.top);
-          g.lineTo(x, b.top + b.height + extra);
+          // Barlines span the staff.
+          g.moveTo(x, b.coreTop);
+          g.lineTo(x, b.coreTop + b.coreH);
         }
         g.stroke();
       }
@@ -329,12 +382,20 @@ export class EngraveCanvas extends EventTarget {
 
     this._drawRuler();
 
-    const bands = systemBands({ parts }, this.score, layout, RULER_H + 8);
-    this._contentH = RULER_H + 8 + parts.length * (layout.staffHeight + layout.staffGap);
+    // Galley is one system running the whole work, so normalised heights crop
+    // each staff to the part's own compass rather than to a passage of it.
+    const bands = systemBands(
+      { parts, tA: 0, tB: this.score?.duration ?? 0 },
+      this.score,
+      layout,
+      RULER_H + 8 - this.scrollY,
+      { project: this.project, pxPerSecond: layout.pxPerSecond }
+    );
+    this._contentH =
+      RULER_H + 8 + bands.reduce((sum, b) => sum + b.height + layout.staffGap, 0);
 
     const xFor = (t) => this.xForGalley(t);
     for (const b of bands) {
-      b.top -= this.scrollY;
       this._bands.push({
         band: b,
         x0: this.plotX,
@@ -344,7 +405,9 @@ export class EngraveCanvas extends EventTarget {
       });
       g.save();
       g.beginPath();
-      g.rect(this.plotX, b.top, this.w - this.plotX, b.height);
+      // The clip takes in the name gutter as well, as Page view's does, so a
+      // part name is not cut away by the box that keeps its notation in.
+      g.rect(0, b.top, this.w, b.height);
       g.clip();
       this._drawBand(b, xFor, this.t0, this.t0 + this.tSpan, {
         ink: 'screen',
@@ -469,7 +532,10 @@ export class EngraveCanvas extends EventTarget {
         const xFor = (t) => sx0 + ((t - sys.tA) / secondsAcross) * (sx1 - sx0);
         const tFor = (x) => sys.tA + ((x - sx0) / (sx1 - sx0)) * secondsAcross;
 
-        const bands = systemBands(sys, this.score, { ...layout, staffHeight: layout.staffHeight * z, staffGap: layout.staffGap * z }, py + y);
+        const bands = systemBands(sys, this.score, layout, py + y, {
+          scale: z,
+          project: this.project,
+        });
         this._frames.push({
           tA: sys.tA,
           tB: sys.tB,
@@ -493,15 +559,13 @@ export class EngraveCanvas extends EventTarget {
             labelX: x0 + page.margin * z,
             showLabel: true,
             isFirst: b === bands[0],
+            systemIndex: sys.index,
             textScale: z,
             tFor,
           });
           g.restore();
         }
-        const used =
-          sys.parts.length * layout.staffHeight * z +
-          (sys.parts.length - 1) * layout.staffGap * z;
-        y += used + layout.systemGap * z;
+        y += sys.height * z + layout.systemGap * z;
       });
 
       if (layout.showPageNumbers) {
@@ -659,7 +723,7 @@ export class EngraveCanvas extends EventTarget {
         const b = e.band;
         // Report the exact spot clicked, in cents relative to the band centre,
         // so a new mark lands where the user put it rather than snapping.
-        const cents = b.centre + (((b.top + b.height / 2 - y) * 2) / b.height) * b.span;
+        const cents = centsForBand(b, y);
         this.dispatchEvent(
           new CustomEvent('place', {
             detail: { partId: b.part.id, t: e.tFor(x), cents, y },
@@ -690,7 +754,7 @@ export class EngraveCanvas extends EventTarget {
         if (!a) return;
         const b = this._drag.band;
         a.t = Math.max(0, this._drag.tFor(x) - (this._drag.tFor(this._drag.x) - this._drag.t0));
-        a.dy = this._drag.dy0 - ((y - this._drag.y) * 2 * b.span) / b.height;
+        a.dy = this._drag.dy0 - ((y - this._drag.y) * 2 * b.span) / b.coreH;
         this._drag.moved = true;
         this.draw();
         return;

@@ -43,7 +43,8 @@
             <div class="body">
               <div class="hint">
                 Grouping partials into named parts is done here. The conductor
-                page imports the map this writes.
+                page imports the map this writes. Click a part to rename it, to
+                give it a nickname for later systems, or to change its partials.
               </div>
               <div class="row wrap" style="margin: 10px 0">
                 <button class="sm" id="autoParts">One per partial</button>
@@ -165,19 +166,24 @@
                 <span id="ribbonScaleLabel">Ribbon thickness</span>
                 <input type="range" id="ribbonScale" min="2" max="70" step="1" value="18" />
               </label>
+              <label class="check">
+                <input type="checkbox" id="normalizeHeights" />
+                <span>Normalise height per system</span>
+              </label>
+              <div class="hint" id="normalizeHint"></div>
             </div>
           </details>
 
           <details class="group" open>
-            <summary>Time rules</summary>
+            <summary>Grid rules</summary>
             <div class="body">
+              <div class="subhead">Vertical — time</div>
               <label class="field">
                 <span>Style</span>
                 <select id="rulesStyle">
                   <option value="none">None</option>
-                  <option value="ticks">Ticks at staff edges</option>
+                  <option value="ticks">Ticks</option>
                   <option value="barlines">Barlines through the staff</option>
-                  <option value="grid">Grid through the system</option>
                 </select>
               </label>
               <label class="field">
@@ -188,6 +194,10 @@
                 <span id="rulesGroupLabel">Emphasise every</span>
                 <input type="range" id="rulesGroup" min="0" max="16" step="1" value="4" />
               </label>
+              <label class="field" id="tickPosField">
+                <span id="rulesTickPosLabel">Tick height</span>
+                <input type="range" id="rulesTickPos" min="0" max="1" step="0.02" value="0" />
+              </label>
               <label class="field">
                 <span>Timestamps</span>
                 <select id="rulesLabels">
@@ -197,6 +207,23 @@
                   <option value="count">Marker number</option>
                 </select>
               </label>
+
+              <div class="subhead">Horizontal — pitch</div>
+              <label class="field">
+                <span>Style</span>
+                <select id="pitchGrid">
+                  <option value="none">None</option>
+                  <option value="semitones">Semitone guidelines</option>
+                  <option value="piano">Piano roll</option>
+                  <option value="pianoLines">Piano roll with semitone guidelines</option>
+                </select>
+              </label>
+              <label class="field" id="pitchOpacityField">
+                <span id="pitchGridOpacityLabel">Chromatic region darkness</span>
+                <input type="range" id="pitchGridOpacity" min="0" max="0.5" step="0.01" value="0.1" />
+              </label>
+              <div class="hint" id="pitchGridHint"></div>
+
               <label class="check"><input type="checkbox" id="showStaffOutline" /><span>Rule beneath each staff</span></label>
               <div class="hint" id="rulesHint"></div>
             </div>
@@ -226,6 +253,19 @@
             <summary>Page furniture</summary>
             <div class="body">
               <label class="check"><input type="checkbox" id="showPartLabels" checked /><span>Part names</span></label>
+              <label class="field">
+                <span id="partLabelSizeLabel">Part name size</span>
+                <input type="range" id="partLabelSize" min="5" max="28" step="0.5" value="10" />
+              </label>
+              <label class="field">
+                <span id="labelWidthLabel">Part name gutter</span>
+                <input type="range" id="labelWidth" min="0" max="240" step="2" value="88" />
+              </label>
+              <div class="hint">
+                The engraved size, held steady on screen as you zoom so its
+                effect on the page can be judged. The full name is set where a
+                part first appears and its nickname on every system after.
+              </div>
               <label class="check"><input type="checkbox" id="showTitle" /><span>Title on first page</span></label>
               <label class="check"><input type="checkbox" id="showPageNumbers" /><span>Page numbers</span></label>
               <div class="hint">All off by default — the notation is the ribbon.</div>

@@ -427,6 +427,23 @@ main {
   padding: 2px 2px 10px;
 }
 
+/* Divides one group into the axes it controls, without nesting another fold. */
+.subhead {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--dim);
+  margin: 4px 0 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--edge);
+}
+
+.body > .subhead:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
 .check {
   display: flex;
   align-items: center;

@@ -15,7 +15,10 @@
 
 import { ribbonPath } from '/shared/ribbon.js';
 import { GLOBAL, KINDS } from '/shared/annotations.js';
-import { castOff, systemBands, timeMarkers, markerLabel } from '/shared/layout.js';
+import {
+  castOff, systemBands, timeMarkers, markerLabel, pitchGrid, yForBand,
+  annotationY, partLabelFor, tickRow, estimateTextWidth,
+} from '/shared/layout.js';
 
 const esc = (s) =>
   String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -73,26 +76,55 @@ export function buildSVG(score, project, opts = {}) {
       const x1 = page.w - page.margin;
       const across = Math.max(1e-6, sys.tB - sys.tA);
       const xFor = (t) => x0 + ((t - sys.tA) / across) * (x1 - x0);
-      const bands = systemBands(sys, score, layout, y);
+      const bands = systemBands(sys, score, layout, y, { project });
 
       for (const b of bands) {
         const isFirstBand = b === bands[0];
-        const yFor = (cents) =>
-          b.top + b.height / 2 - ((cents - b.centre) / b.span) * (b.height / 2);
+        const yFor = (cents) => yForBand(b, cents);
+        const coreBottom = b.coreTop + b.coreH;
 
         if (layout.showPartLabels) {
+          const size = layout.partLabelSize || 10;
           body.push(
-            `<text x="${page.margin}" y="${(b.top + 12).toFixed(1)}" font-family="system-ui, sans-serif" ` +
-              `font-size="10" font-weight="600">${esc(b.part.name)}</text>`
+            `<text x="${page.margin}" y="${(b.coreTop + b.coreH / 2 + size * 0.35).toFixed(1)}" ` +
+              `font-family="system-ui, sans-serif" font-size="${size}" font-weight="600">` +
+              `${esc(partLabelFor(b.part, sys.index))}</text>`
           );
         }
         if (layout.showStaffOutline) {
           body.push(
-            `<line x1="${x0}" y1="${(b.top + b.height).toFixed(1)}" x2="${x1}" y2="${(b.top + b.height).toFixed(1)}" stroke="#c8c8c8" stroke-width="1"/>`
+            `<line x1="${x0}" y1="${coreBottom.toFixed(1)}" x2="${x1}" y2="${coreBottom.toFixed(1)}" stroke="#c8c8c8" stroke-width="1"/>`
           );
         }
 
-        // Time rules, drawn before the notation so the ribbon sits on top.
+        // The horizontal grid, first of all, so everything reads on top of it.
+        const pitchMode = layout.pitchGrid || 'none';
+        if (pitchMode !== 'none') {
+          const grid = pitchGrid(b.centre - b.span, b.centre + b.span, b.pxPerCent, pitchMode);
+          const alpha = Math.max(0, Math.min(1, layout.pitchGridOpacity ?? 0.1));
+          if (alpha > 0.001) {
+            for (const region of grid.bands) {
+              const top = Math.max(b.coreTop, yFor(region.c1));
+              const bottom = Math.min(coreBottom, yFor(region.c0));
+              if (bottom - top <= 0.15) continue;
+              body.push(
+                `<rect x="${x0}" y="${top.toFixed(1)}" width="${(x1 - x0).toFixed(1)}" ` +
+                  `height="${(bottom - top).toFixed(1)}" fill="#000000" fill-opacity="${alpha}"/>`
+              );
+            }
+          }
+          for (const line of grid.lines) {
+            const ly = yFor(line.cents);
+            if (ly < b.coreTop - 0.5 || ly > coreBottom + 0.5) continue;
+            body.push(
+              `<line x1="${x0}" y1="${ly.toFixed(1)}" x2="${x1}" y2="${ly.toFixed(1)}" ` +
+                `stroke="#000000" stroke-opacity="${line.strong ? 0.32 : 0.13}" ` +
+                `stroke-width="${line.strong ? 0.7 : 0.5}"/>`
+            );
+          }
+        }
+
+        // The vertical grid, drawn before the notation so the ribbon sits on top.
         const rulesStyle = layout.rulesStyle || 'none';
         if (rulesStyle !== 'none' || (layout.rulesLabels || 'none') !== 'none') {
           const pxPerSecond = (x1 - x0) / Math.max(1e-6, sys.tB - sys.tA);
@@ -103,19 +135,17 @@ export function buildSVG(score, project, opts = {}) {
           })) {
             const mx = xFor(mk.t);
             if (mx < x0 - 1 || mx > x1 + 1) continue;
-            const stroke = mk.strong ? '#000000' : '#000000';
+            const stroke = '#000000';
             const opacity = mk.strong ? 0.42 : 0.16;
             const width = mk.strong ? 0.9 : 0.6;
             if (rulesStyle === 'ticks') {
-              const len = Math.min(10, b.height * 0.16) * (mk.strong ? 1.6 : 1);
+              const { top, len } = tickRow(b, layout, mk.strong);
               body.push(
-                `<line x1="${mx.toFixed(1)}" y1="${b.top.toFixed(1)}" x2="${mx.toFixed(1)}" y2="${(b.top + len).toFixed(1)}" stroke="${stroke}" stroke-opacity="${opacity}" stroke-width="${width}"/>`,
-                `<line x1="${mx.toFixed(1)}" y1="${(b.top + b.height - len).toFixed(1)}" x2="${mx.toFixed(1)}" y2="${(b.top + b.height).toFixed(1)}" stroke="${stroke}" stroke-opacity="${opacity}" stroke-width="${width}"/>`
+                `<line x1="${mx.toFixed(1)}" y1="${top.toFixed(1)}" x2="${mx.toFixed(1)}" y2="${(top + len).toFixed(1)}" stroke="${stroke}" stroke-opacity="${opacity}" stroke-width="${width}"/>`
               );
             } else if (rulesStyle !== 'none') {
-              const extra = rulesStyle === 'grid' ? layout.staffGap : 0;
               body.push(
-                `<line x1="${mx.toFixed(1)}" y1="${b.top.toFixed(1)}" x2="${mx.toFixed(1)}" y2="${(b.top + b.height + extra).toFixed(1)}" stroke="${stroke}" stroke-opacity="${opacity}" stroke-width="${width}"/>`
+                `<line x1="${mx.toFixed(1)}" y1="${b.coreTop.toFixed(1)}" x2="${mx.toFixed(1)}" y2="${coreBottom.toFixed(1)}" stroke="${stroke}" stroke-opacity="${opacity}" stroke-width="${width}"/>`
               );
             }
             if (isFirstBand && mk.strong) {
@@ -146,7 +176,7 @@ export function buildSVG(score, project, opts = {}) {
               continue;
             }
             const yy = yFor(1200 * Math.log2(s.f / 440));
-            if (yy < b.top - b.height || yy > b.top + b.height * 2) {
+            if (yy < b.coreTop - b.coreH || yy > b.coreTop + b.coreH * 2) {
               flush();
               continue;
             }
@@ -164,16 +194,14 @@ export function buildSVG(score, project, opts = {}) {
             const s = sampleAt(p, a.t, 0);
             if (s && s.f > 0 && (!best || s.a > best.a)) best = s;
           }
-          const base = best ? yFor(1200 * Math.log2(best.f / 440)) : b.top + b.height / 2;
-          const off = a.place === 'above' ? -14 : a.place === 'below' ? 20 : 3;
-          const size = (a.style?.size || def.size || 12) * 0.85;
-          const ty = Math.min(
-            b.top + b.height - 3,
-            Math.max(b.top + size + 2, base + off - (a.dy / b.span) * (b.height / 2))
-          );
+          const base = best ? yFor(1200 * Math.log2(best.f / 440)) : b.coreTop + b.coreH / 2;
+          // Sized and placed by the same code the canvas uses, so what was
+          // engraved on screen is what comes out on paper.
+          const size = a.style?.size || def.size || 13;
+          const ty = annotationY(b, a, size, base);
           const x = xFor(a.t);
           const font = a.kind === 'lyric' ? 'Georgia, serif' : 'system-ui, sans-serif';
-          const wText = String(a.text).length * size * 0.55 + 6;
+          const wText = estimateTextWidth(a.text, size) + 6;
 
           body.push(
             `<rect x="${(x - 3).toFixed(1)}" y="${(ty - size).toFixed(1)}" width="${wText.toFixed(1)}" height="${(size + 4).toFixed(1)}" fill="#ffffff" fill-opacity="0.85"/>`
@@ -196,9 +224,7 @@ export function buildSVG(score, project, opts = {}) {
         }
       }
 
-      const used =
-        sys.parts.length * layout.staffHeight + (sys.parts.length - 1) * layout.staffGap;
-      y += used + layout.systemGap;
+      y += sys.height + layout.systemGap;
     }
 
     return (

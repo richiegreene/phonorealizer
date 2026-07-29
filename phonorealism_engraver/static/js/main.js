@@ -198,15 +198,38 @@ $('addPart').onclick = () => {
   if (!state.score) return;
   const name = prompt('Part name (e.g. "Violin 1")');
   if (!name) return;
+  const nick = prompt(
+    'Nickname, used from the second system on (optional)',
+    suggestNick(name)
+  );
   const spec = prompt(
     `Which partials? 1–${state.score.partials.length}. Ranges allowed, e.g. "3, 7, 12-14"`
   );
   if (!spec) return;
   const partials = parseSpec(spec, state.score.partials.length);
   if (!partials.length) return alert('No valid partial numbers in that.');
-  state.project.parts.push({ id: `g${Date.now().toString(36)}`, name: name.trim(), partials });
+  state.project.parts.push({
+    id: `g${Date.now().toString(36)}`,
+    name: name.trim(),
+    nick: (nick || '').trim(),
+    partials,
+  });
   touched();
 };
+
+/**
+ * A plausible short form to offer for a nickname: the head of the word, plus
+ * any number that distinguishes one desk from another. Only a suggestion —
+ * abbreviating an instrument name properly is a judgement, not a rule.
+ */
+function suggestNick(name) {
+  const s = String(name).trim();
+  const num = s.match(/\d+\s*$/);
+  const word = s.replace(/\s*\d+\s*$/, '').trim();
+  if (!word) return s;
+  const short = word.length <= 4 ? word : `${word.slice(0, 3)}.`;
+  return num ? `${short} ${num[0].trim()}` : short;
+}
 
 function parseSpec(spec, max) {
   const out = new Set();
@@ -242,13 +265,20 @@ function renderParts() {
     nm.textContent = part.name;
     const meta = document.createElement('div');
     meta.className = 'meta';
-    meta.textContent = state.score
-      ? `${part.partials.join(', ')} · ${partLabel(state.score, part)}`
-      : part.partials.join(', ');
+    const bits = [];
+    if (part.nick) bits.push(`“${part.nick}” after the first system`);
+    bits.push(part.partials.join(', '));
+    if (state.score) bits.push(partLabel(state.score, part));
+    meta.textContent = bits.join(' · ');
     grow.append(nm, meta);
     grow.onclick = () => {
       const n = prompt('Part name', part.name);
       if (n) part.name = n.trim();
+      const k = prompt(
+        'Nickname, used from the second system on (blank to keep the full name)',
+        part.nick || suggestNick(part.name)
+      );
+      if (k != null) part.nick = k.trim();
       const s = prompt('Partials', part.partials.join(', '));
       if (s && state.score) part.partials = parseSpec(s, state.score.partials.length);
       touched();
@@ -532,14 +562,16 @@ $('filterGlobal').onclick = () => {
  * Engrave — spacing, breaks, furniture
  * ------------------------------------------------------------------ */
 
-const spacing = [
+const sliders = [
   ['pxPerSecond', 'Horizontal spacing', (v) => `${v} px per second`],
   ['staffHeight', 'Staff height', (v) => `${v} px`],
   ['staffGap', 'Gap between parts', (v) => `${v} px`],
   ['systemGap', 'Gap between systems', (v) => `${v} px`],
   ['ribbonScale', 'Ribbon thickness', (v) => `${v} px at loudest`],
+  ['partLabelSize', 'Part name size', (v) => `${v} px`],
+  ['labelWidth', 'Part name gutter', (v) => (v ? `${v} px` : 'none — names set over the music')],
 ];
-for (const [key, label, fmt] of spacing) {
+for (const [key, label, fmt] of sliders) {
   $(key).oninput = () => {
     const v = parseFloat($(key).value);
     editedLayout()[key] = v;
@@ -548,45 +580,94 @@ for (const [key, label, fmt] of spacing) {
   };
 }
 
-for (const key of ['showPartLabels', 'showStaffOutline', 'showTitle', 'showPageNumbers']) {
+for (const key of [
+  'showPartLabels', 'showStaffOutline', 'showTitle', 'showPageNumbers',
+  'normalizeHeights',
+]) {
   $(key).onchange = () => {
     editedLayout()[key] = $(key).checked;
+    updateSpacingHint();
     afterLayoutChange();
   };
 }
 
-/* ---- time rules ---- */
+function updateSpacingHint() {
+  $('normalizeHint').textContent = $('normalizeHeights').checked
+    ? 'Each staff is cropped to the pitch its part actually reaches in that ' +
+      'system, and annotations stack in rows outside the ribbon so they cannot ' +
+      'sit on it. The pitch scale itself is unchanged — only empty register goes.'
+    : 'Every staff takes the full staff height, whether its part uses that ' +
+      'much register or not.';
+}
 
-for (const key of ['rulesStyle', 'rulesLabels']) {
+/* ---- grid rules ---- */
+
+for (const key of ['rulesStyle', 'rulesLabels', 'pitchGrid']) {
   $(key).onchange = () => {
     editedLayout()[key] = $(key).value;
-    updateRulesLabels();
+    updateGridLabels();
     afterLayoutChange();
   };
 }
-for (const key of ['rulesRate', 'rulesGroup']) {
+for (const key of ['rulesRate', 'rulesGroup', 'rulesTickPos', 'pitchGridOpacity']) {
   $(key).oninput = () => {
     editedLayout()[key] = parseFloat($(key).value);
-    updateRulesLabels();
+    updateGridLabels();
     afterLayoutChange();
   };
 }
 
 /**
- * Describe the rate in the terms that matter: a tempo, the interval it implies,
- * and what the emphasised marker then lands on.
+ * Describe the grid in the terms that matter: the vertical rate as a tempo and
+ * the interval it implies, and which reading of the pitch lattice is drawn.
+ * Controls that govern a style not currently chosen are put away rather than
+ * left to be adjusted with no visible effect.
  */
-function updateRulesLabels() {
+function updateGridLabels() {
   const rate = parseFloat($('rulesRate').value) || 60;
   const group = parseFloat($('rulesGroup').value) || 0;
   const interval = 60 / rate;
+  const style = $('rulesStyle').value;
+  const pitch = $('pitchGrid').value;
+
   $('rulesRateLabel').textContent =
     `Rate — ${rate} bpm · a marker every ${interval < 1 ? `${(interval * 1000).toFixed(0)} ms` : `${interval.toFixed(2)} s`}`;
   $('rulesGroupLabel').textContent = group
     ? `Emphasise every ${group} · an accent every ${(interval * group).toFixed(2)} s`
     : 'Emphasise — off, an even grid';
+
+  const pos = parseFloat($('rulesTickPos').value) || 0;
+  $('rulesTickPosLabel').textContent = `Tick height — ${
+    pos <= 0.001
+      ? 'at the foot of the staff'
+      : pos >= 0.999
+        ? 'at the head of the staff'
+        : `${Math.round(pos * 100)}% up the staff`
+  }`;
+  $('tickPosField').classList.toggle('hidden', style !== 'ticks');
+
+  const alpha = parseFloat($('pitchGridOpacity').value) || 0;
+  $('pitchGridOpacityLabel').textContent =
+    `Chromatic region darkness — ${Math.round(alpha * 100)}%`;
+  $('pitchOpacityField').classList.toggle(
+    'hidden',
+    pitch !== 'piano' && pitch !== 'pianoLines'
+  );
+
+  $('pitchGridHint').textContent =
+    pitch === 'none'
+      ? 'No pitch reference is drawn.'
+      : pitch === 'semitones'
+        ? 'A rule at every semitone, emphasised at each C: a partial’s pitch ' +
+          'reads off the line it sits on.'
+        : 'Chromatic regions shaded, each centred on its black note as on a ' +
+          'piano roll' +
+          (pitch === 'pianoLines'
+            ? ', with a guideline down the middle of each at the semitone itself.'
+            : '.');
+
   $('rulesHint').textContent =
-    $('rulesStyle').value === 'none' && $('rulesLabels').value === 'none'
+    style === 'none' && $('rulesLabels').value === 'none'
       ? 'No time reference is drawn.'
       : 'Timestamps appear on the top staff of each system, at emphasised markers only.';
 }
@@ -897,18 +978,26 @@ $('expSvg').onclick = () => {
 /** Push the edited profile's values back into the controls. */
 function syncControls() {
   const l = editedLayout();
-  for (const [key, label, fmt] of spacing) {
+  for (const [key, label, fmt] of sliders) {
     if (l[key] != null) $(key).value = l[key];
     $(`${key}Label`).textContent = `${label} — ${fmt(parseFloat($(key).value))}`;
   }
-  for (const key of ['showPartLabels', 'showStaffOutline', 'showTitle', 'showPageNumbers']) {
+  for (const key of [
+    'showPartLabels', 'showStaffOutline', 'showTitle', 'showPageNumbers',
+    'normalizeHeights',
+  ]) {
     $(key).checked = !!l[key];
   }
-  $('rulesStyle').value = l.rulesStyle || 'none';
+  updateSpacingHint();
+  // 'grid' has been withdrawn; a project saved with it reads as barlines.
+  $('rulesStyle').value = l.rulesStyle === 'grid' ? 'barlines' : l.rulesStyle || 'none';
   $('rulesRate').value = l.rulesRate ?? 60;
   $('rulesGroup').value = l.rulesGroup ?? 4;
+  $('rulesTickPos').value = l.rulesTickPos ?? 0;
   $('rulesLabels').value = l.rulesLabels || 'seconds';
-  updateRulesLabels();
+  $('pitchGrid').value = l.pitchGrid || 'none';
+  $('pitchGridOpacity').value = l.pitchGridOpacity ?? 0.1;
+  updateGridLabels();
   $('pageSize').value = l.pageSize || 'a4';
   $('orientation').value = l.orientation || 'landscape';
   $('margin').value = l.margin ?? 54;

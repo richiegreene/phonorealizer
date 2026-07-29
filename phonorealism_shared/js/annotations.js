@@ -235,6 +235,9 @@ export function toPartMap(project) {
     parts: project.parts.map((p) => ({
       id: p.id,
       name: p.name,
+      // The short form for later systems. Carried here so a part map round-trips
+      // without losing it; readers that do not label parts simply ignore it.
+      nick: p.nick || '',
       partials: [...p.partials],
       auto: false,
     })),
@@ -246,6 +249,7 @@ export function fromPartMap(obj) {
   return obj.parts.map((p) => ({
     id: String(p.id),
     name: String(p.name || 'Part'),
+    nick: String(p.nick || ''),
     partials: (p.partials || []).map(Number).filter((n) => Number.isFinite(n) && n >= 1),
   }));
 }

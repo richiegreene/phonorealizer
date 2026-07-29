@@ -40,6 +40,13 @@ replace those with real ones — *New part…* takes `3, 7, 12-14`. Each part ge
 **staff**: a band showing its partials in the same ribbon notation the players
 read, height as pitch and thickness as amplitude.
 
+A part can also carry a **nickname**. Where part names are shown, the full name
+is set on the system where the part first appears and the nickname on every
+system after it, as an orchestral score does — a name repeated in full down forty
+systems is a gutter of text rather than information. A part without a nickname
+keeps its full name throughout, rather than going unlabelled from the second
+system on.
+
 Parts are laid out **lowest at the bottom** by default, so partial 1 sits on the
 bottom staff and the spectrum reads upward as in a conventional score.
 
@@ -61,9 +68,52 @@ span with a continuation line, for *cresc.* or a held direction.
 | --- | --- |
 | **Page setup** | paper size, orientation, margins |
 | **Note spacing** | how much width a second of music occupies — wider casts off into more systems |
-| **Staff spacing** | staff height, gap between parts, gap between systems, ribbon thickness |
+| **Staff spacing** | staff height, gaps between parts and between systems, ribbon thickness, *Normalise height per system* |
+| **Grid rules** | a vertical grid in time and a horizontal one in pitch |
 | **Breaks** | *Create System Break* / *Create Page Break*, scoped to Full Score or one part |
-| **Page furniture** | part names, staff rules, title, page numbers — all off but part names |
+| **Page furniture** | part names and their size, title, page numbers — all off but part names |
+
+### Grid rules
+
+Two axes, because they answer different questions. The **vertical** grid is a
+time reference: this music has no metre, so nothing derives a barline for us, and
+the rate is given as a tempo — 60 for a marker a second — because that is the
+unit the music is actually cued against. *Ticks* draws one short row rather than
+marks at both staff edges, and a slider raises that row anywhere from the foot of
+the staff to its head, since which edge is clear of the notation depends on the
+music.
+
+The **horizontal** grid reads pitch off the same cents-from-A440 scale the ribbon
+is drawn against, so it lines up with the notation rather than approximating it.
+*Semitone guidelines* puts a rule at each semitone, emphasised at every C, and a
+partial's pitch reads off the line it sits on. *Piano roll* instead shades the
+chromatic regions, each one a semitone tall and centred on its black note, at an
+opacity you set — so a partial in the middle of a dark band is on that black
+note. Both together give the lines with the regions behind them.
+
+Below about five pixels a semitone the lines stop reading as separate rules and
+thin to the octaves, then stop; shading survives closer spacing, since
+alternating light and dark still reads as a pattern where a comb of lines does
+not.
+
+### Normalise height per system
+
+Off, every staff takes the full staff height whether its part uses that register
+or not. On, each staff is cropped to the pitch its part actually reaches in that
+system — a partial sitting still for a system earns a sliver, not a whole staff,
+and pages hold more music without anything being made smaller.
+
+The pitch axis is cropped, not rescaled. Choosing a new scale per system would
+make the same glissando steeper on one system than the next, which would be a
+lie about the music rather than a saving of space.
+
+Annotations are what makes this more than arithmetic: a staff only as tall as its
+ribbon has no slack inside it to hold text. So above and below marks are stacked
+in rows outside the ribbon, as many as it takes for none of them to collide, and
+those rows are what the staff reserves room for — including the vertical nudge,
+so dragging a mark further out still leaves it inside its own staff rather than
+over its neighbour's. Past a few rows the crowding is a spacing problem to solve
+horizontally, and the staff stops growing to accommodate it.
 
 ### Two layouts, engraved separately
 
@@ -89,6 +139,11 @@ it describes the work, not one view of it.
 Marks are clamped into their own staff. A part sitting low would otherwise push a
 "below" lyric past the clip and out of existence, and an annotation you cannot
 see is worse than one slightly crowded.
+
+Part names are **centred on the part's contents**, so they stay against the music
+whichever way *Normalise height per system* is set, and their size on screen is
+the size in *Page furniture* rather than the zoom's — a name that grew and shrank
+with the view could not be judged against the page it will be printed on.
 
 ## Galley and Page view
 
@@ -174,7 +229,7 @@ static/js/
   lib/binser.js        justidraw .sav reader
   annotations.js       the sidecar format, shared with the performer app
   ribbon.js            notation geometry, shared so both apps draw identically
-  layout.js            casting off — breaks, note and staff spacing, pagination
+  layout.js            casting off — breaks, spacing, pagination, staff and grid geometry
 ```
 
 No score parsing happens in Python. There is one justidraw reader in this
