@@ -30,7 +30,7 @@ vertical nudge, so a lyric glued to a line travels with it as the pitch scale
 changes — a pixel offset would drift off its partial the moment the view
 rescaled.
 
-## Three modes
+## Four modes
 
 Organised as Dorico is, because the vocabulary is already in use: what you are
 doing decides what the panel offers.
@@ -149,6 +149,46 @@ so dragging a mark further out still leaves it inside its own staff rather than
 over its neighbour's. Past a few rows the crowding is a spacing problem to solve
 horizontally, and the staff stops growing to accommodate it.
 
+**Play** auditions it. A transport, a playhead that travels through the score,
+and clicking the music to play from there — Dorico's Play mode, and space to
+start and stop.
+
+### Playing through the performers' own synthesis
+
+The renderer is not a preview built for this application. It is
+[`shared/synth.js`](../phonorealism_shared/js/synth.js), the same additive
+re-synthesis the performers hear in their earbuds, moved into the shared
+directory when this mode was added rather than copied into it. Two
+re-synthesisers would eventually disagree about what the score sounds like, and
+the disagreement would surface as the composer and the players hearing different
+music — the same reason there is one score reader and one casting-off engine.
+
+So **Playback timbre** is the performers' timbre: the 0–300 morph through sine,
+triangle, sawtooth and square from the desktop modifier's *Basic Shapes* preset,
+band-limited so that a partial at 19 kHz does not fold its harmonics back down
+into the range the players are tuning against. What is auditioned at the desk is
+what will be in their ears.
+
+Playback follows the view rather than having a target of its own. On **Full
+Score** the whole spectrum sounds. On a part, that part sounds with the rest of
+the score on the far side of a **Balance** fader — the same "me against everyone
+else" crossfade the monitor mix is built from, which is what makes it possible to
+hear whether a part is findable inside the texture.
+
+Position comes from the AudioContext clock rather than a timer, so the playhead
+cannot drift from the sound it is reporting. Changing timbre mid-playback
+re-renders and picks up where it left off, because a timbre you have to stop and
+restart to hear is one you will not audition properly. Rendering happens on a
+worker thread and is keyed to what the sound actually depends on — the layout's
+partials and the timbre — so editing an annotation does not throw away a render,
+and switching layout does.
+
+**Follow the playhead** pages the view along. Page view jumps to the page the
+playhead is on and keeps it in the upper part of the window, so there is music
+visible ahead of it; galley moves its window a screenful at a time rather than
+scrolling continuously, because a strip sliding under a fixed line is much harder
+to read from than a static one the line crosses.
+
 ### Two layouts, engraved separately
 
 Everything in Page setup and the spacing groups belongs to **one layout**, chosen
@@ -257,13 +297,15 @@ server/app.py          project files on disk; LilyPond later
 static/js/
   canvas.js            the engraving surface — Galley and Page view
   print.js             paginated SVG for print and export
-  main.js              Setup / Write / Engrave wiring
+  main.js              Setup / Write / Engrave / Play wiring
 ../phonorealism_shared/js/
   score.js             both score formats -> one model, canonical numbering
   lib/binser.js        justidraw .sav reader
   annotations.js       the sidecar format, shared with the performer app
   ribbon.js            notation geometry, shared so both apps draw identically
   layout.js            casting off — breaks, spacing, pagination, staff and grid geometry
+  synth.js             re-synthesis and the timbre morph, shared with the performers' ears
+  render-worker.js     additive synthesis off the main thread
 ```
 
 No score parsing happens in Python. There is one justidraw reader in this

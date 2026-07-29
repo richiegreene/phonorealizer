@@ -11,7 +11,9 @@
 import { Net, fetchScore, fetchAnnotations } from './net.js';
 import { scoreFromJSON, partPartials, partLabel, hzToNoteName } from '/shared/score.js';
 import { MicAnalyser, Smoother } from './analyser.js';
-import { ScorePlayer, scheduleCountIn } from './synth.js';
+import {
+  ScorePlayer, scheduleCountIn, timbreName, drawTimbreWave,
+} from '/shared/synth.js';
 import { PerformanceView } from './render.js';
 import { GLOBAL } from '/shared/annotations.js';
 
@@ -532,76 +534,7 @@ el.band.oninput = () => {
 
 /* ---- playback timbre ---- */
 
-const SHAPE_NAMES = ['Sine', 'Triangle', 'Sawtooth', 'Square'];
-
-/**
- * Naive shape functions for the preview only.
- *
- * What you actually hear is band-limited (see render-worker.js), but an ideal
- * square reads as a square at a glance, whereas a band-limited one at this size
- * is mostly Gibbs ringing. The picture is an affordance for choosing a shape,
- * not an oscilloscope.
- */
-const SHAPE_FNS = [
-  (x) => Math.sin(2 * Math.PI * x),
-  (x) => 4 * Math.abs(x - Math.floor(x + 0.5)) - 1,
-  (x) => 2 * (x - Math.floor(x + 0.5)),
-  (x) => (x % 1 < 0.5 ? 1 : -1),
-];
-
-function timbreName(v) {
-  const pos = v / 100;
-  const lo = Math.min(2, Math.floor(pos));
-  const frac = pos - lo;
-  if (frac < 0.02) return SHAPE_NAMES[lo];
-  if (frac > 0.98) return SHAPE_NAMES[lo + 1];
-  return `${SHAPE_NAMES[lo]} → ${SHAPE_NAMES[lo + 1]} ${Math.round(frac * 100)}%`;
-}
-
-function drawWave(v) {
-  const c = el.waveView;
-  const rect = c.getBoundingClientRect();
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  const w = Math.max(1, Math.round(rect.width));
-  const h = Math.max(1, Math.round(rect.height));
-  if (c.width !== w * dpr || c.height !== h * dpr) {
-    c.width = w * dpr;
-    c.height = h * dpr;
-  }
-  const g = c.getContext('2d');
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.clearRect(0, 0, w, h);
-
-  const pos = Math.min(3, Math.max(0, v / 100));
-  const lo = Math.min(2, Math.floor(pos));
-  const frac = pos - lo;
-  const a = SHAPE_FNS[lo];
-  const b = SHAPE_FNS[Math.min(3, lo + 1)];
-
-  g.strokeStyle = '#232a33';
-  g.lineWidth = 1;
-  g.beginPath();
-  g.moveTo(0, h / 2 + 0.5);
-  g.lineTo(w, h / 2 + 0.5);
-  g.stroke();
-
-  g.strokeStyle = '#4da3ff';
-  g.lineWidth = 2;
-  g.lineJoin = 'round';
-  g.shadowColor = '#4da3ff';
-  g.shadowBlur = 6;
-  g.beginPath();
-  const cycles = 2;
-  for (let px = 0; px <= w; px++) {
-    const x = (px / w) * cycles;
-    const y = a(x) + frac * (b(x) - a(x));
-    const py = h / 2 - y * (h / 2 - 8);
-    if (px === 0) g.moveTo(px, py);
-    else g.lineTo(px, py);
-  }
-  g.stroke();
-  g.shadowBlur = 0;
-}
+const drawWave = (v) => drawTimbreWave(el.waveView, v);
 
 el.timbre.oninput = () => {
   state.timbre = parseFloat(el.timbre.value);

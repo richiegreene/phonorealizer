@@ -9,7 +9,7 @@
  * it, so partial numbering is guaranteed identical between the applications.
  */
 
-import { loadScoreFile, defaultParts, partLabel } from '/shared/score.js';
+import { loadScoreFile, defaultParts, partLabel, partPartials } from '/shared/score.js';
 import {
   GLOBAL, KINDS, KIND_ORDER, PLACES, ALIGNMENTS, makeProject, validate,
   addAnnotation, removeAnnotation, updateAnnotation, explodeToParts,
@@ -19,6 +19,9 @@ import {
   defaultLayouts, layoutFor, profileKeyFor, pageGeometry, PAGE_SIZES,
   addBreak, removeBreak, orderedParts,
 } from '/shared/layout.js';
+import {
+  ScorePlayer, scheduleCountIn, timbreName, drawTimbreWave, TIMBRE_MAX,
+} from '/shared/synth.js';
 import { EngraveCanvas } from './canvas.js';
 import { openPrintView, downloadSVG } from './print.js';
 
@@ -35,6 +38,21 @@ const state = {
   editingBreakId: null,
   dirty: false,
   mode: 'export', // or 'print', for the shared dialogue
+
+  /* --- playback --- */
+  timbre: 100, // 0 sine, 100 triangle, 200 saw, 300 square
+  balance: 0, // 0 the engraved layout alone, 1 everything else
+  volume: 0.8,
+  playing: false,
+  /** Where the playhead sits when stopped, and where Play resumes from. */
+  playFrom: 0,
+  /** What the rendered buffers were rendered for; see renderKey(). */
+  renderedFor: null,
+  rendering: false,
+  /** How much of the score got rendered — capped on very long works. */
+  playDuration: 0,
+  /** Whether there is anything on the far side of the balance fader. */
+  hasEnsemble: false,
 };
 
 const sheet = new EngraveCanvas($('sheet'));
@@ -90,13 +108,21 @@ for (const tab of document.querySelectorAll('.tab')) {
     // The surface reads the mode to decide what a click on empty space means.
     sheet.mode = tab.dataset.tab;
     $('zoomHint').textContent =
-      tab.dataset.tab === 'write'
-        ? 'click to place a mark'
-        : tab.dataset.tab === 'engrave'
-          ? 'click to place a break · drag a flag to move it'
-          : sheet.view === 'page'
-            ? 'scroll to page · ⌘-scroll to zoom'
-            : 'scroll to zoom · shift-scroll to pan';
+      {
+        write: 'click to place a mark · shift-click to select several',
+        engrave: 'click to place a break · drag a flag to move it',
+        play: 'click the score to play from there · space to start and stop',
+      }[tab.dataset.tab] ||
+      (sheet.view === 'page'
+        ? 'scroll to page · ⌘-scroll to zoom'
+        : 'scroll to zoom · shift-scroll to pan');
+    // The wave preview cannot be drawn while its pane is hidden — a canvas with
+    // no layout has no size to draw into.
+    if (tab.dataset.tab === 'play') {
+      drawWave();
+      updateMixControls();
+      updateClock();
+    }
     sheet.draw();
   };
 }
@@ -116,6 +142,14 @@ async function ingestScore(file) {
   {
     try {
     const score = await loadScoreFile(file);
+    // Anything rendered for the previous score is now wrong, and playback of it
+    // has to stop before its buffers are replaced.
+    if (state.playing) pausePlayback();
+    scoreEpoch += 1;
+    state.renderedFor = null;
+    state.playDuration = 0;
+    state.playFrom = 0;
+    sheet.playhead = null;
     state.score = score;
     if (!state.project.parts.length) {
       const p = makeProject(score, defaultParts(score).map(stripAuto));
@@ -132,6 +166,8 @@ async function ingestScore(file) {
     sheet.setProject(state.project);
     sheet.fitAll();
     refresh();
+    setPlayHint('Press Play to hear this through the performers’ own synthesis.');
+    updateClock();
     } catch (err) {
       showIssues([
         { level: 'error', message: `Could not read "${file.name}": ${err.message}` },
@@ -328,6 +364,9 @@ $('targetSelect').onchange = () => {
   // Editing follows viewing: the Engrave panel should describe what is on screen.
   $('layoutProfile').value = profileKeyFor(sheet.target);
   syncControls();
+  // Playback follows viewing too: what is auditioned is the layout on screen.
+  // The mix is re-rendered on the next Play rather than mid-note.
+  updateMixControls();
   sheet.draw();
   renderBreaks();
 };
@@ -968,6 +1007,309 @@ function renderBreaks() {
 }
 
 /* ------------------------------------------------------------------ *
+ * Play — auditioning the layout on screen
+ *
+ * Re-synthesis, the timbre morph and the scheduling all come from the shared
+ * synth the performers hear through (`/shared/synth.js`), so what is auditioned
+ * at the desk is what will be in their ears. A second renderer here would
+ * eventually disagree with theirs, and the disagreement would surface as the
+ * composer and the players hearing different music.
+ *
+ * Modelled on Dorico's Play mode: a transport, a playhead that travels through
+ * the score, a view that follows it, and clicking the music to move it.
+ * ------------------------------------------------------------------ */
+
+/** Lazily built: an AudioContext may only be created from a user gesture. */
+let audio = null;
+
+/** Bumped when a different score is loaded, so rendered audio is not reused. */
+let scoreEpoch = 0;
+
+let wireScore = null;
+let wireFor = null;
+let raf = null;
+let scrubbing = false;
+
+function ensureAudio() {
+  if (!audio) {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    const ctx = new Ctx();
+    audio = { ctx, player: new ScorePlayer(ctx) };
+    audio.player.setBalance(state.balance);
+    audio.player.setVolume(state.volume);
+  }
+  if (audio.ctx.state === 'suspended') audio.ctx.resume();
+  return audio;
+}
+
+/**
+ * The score in the shape the renderer reads.
+ *
+ * Only the breakpoints: passing the parsed model would copy fields the worker
+ * has no use for across the thread boundary on every render.
+ */
+function playbackScore() {
+  if (!state.score) return null;
+  if (wireFor !== state.score) {
+    wireScore = {
+      duration: state.score.duration,
+      partials: state.score.partials.map((p) => ({ i: p.index, t: p.t, f: p.f, a: p.a })),
+    };
+    wireFor = state.score;
+  }
+  return wireScore;
+}
+
+/**
+ * The partials the layout on screen is made of.
+ *
+ * Full Score plays everything. A part layout plays that part, with the rest of
+ * the score on the far side of the balance fader — the same "me against
+ * everyone else" split the performers' monitor mix is built from, which is why
+ * the fader exists at all.
+ */
+function playedIndices() {
+  if (!state.score) return [];
+  if (sheet.target === 'score') return state.score.partials.map((p) => p.index);
+  const part = state.project.parts.find((p) => p.id === sheet.target);
+  return part ? partPartials(state.score, part).map((p) => p.index) : [];
+}
+
+/**
+ * What the rendered buffers would have to match to still be usable.
+ *
+ * Keyed by what the sound actually depends on, so switching layout or timbre
+ * re-renders and editing an annotation does not.
+ */
+function renderKey() {
+  return `${scoreEpoch}|${state.timbre}|${playedIndices().join(',')}`;
+}
+
+function playDuration() {
+  return state.playDuration || state.score?.duration || 0;
+}
+
+async function prepareAudio() {
+  const wire = playbackScore();
+  if (!wire || state.rendering) return false;
+  const key = renderKey();
+  if (state.renderedFor === key) return true;
+
+  const { player } = ensureAudio();
+  state.rendering = true;
+  // Synthesis is roughly real-time-over-30, so a long score takes visible
+  // seconds. Say so rather than appearing to hang.
+  setPlayHint('Rendering the playback mix…');
+  try {
+    const r = await player.prepare(wire, playedIndices(), 0, state.timbre);
+    state.renderedFor = key;
+    state.playDuration = r.duration;
+    state.hasEnsemble = r.ensemble;
+    const notes = [];
+    if (r.truncated) {
+      notes.push(`Playback stops at ${Math.round(r.duration / 60)} minutes — the score is longer.`);
+    }
+    if (r.ensembleDropped) notes.push('The rest of the score was left out; it would not fit in memory.');
+    setPlayHint(notes.join(' ') || `Ready · ${r.megabytes} MB rendered.`);
+    updateMixControls();
+    return true;
+  } catch (err) {
+    setPlayHint(`Could not render the playback mix: ${err.message}`);
+    return false;
+  } finally {
+    state.rendering = false;
+  }
+}
+
+/** Position in the score, taken from the audio clock rather than a timer. */
+function playPosition() {
+  const p = audio?.player;
+  if (!p || p.startedAtCtxTime == null) return state.playFrom;
+  return p.startOffset + (audio.ctx.currentTime - p.startedAtCtxTime);
+}
+
+async function startPlayback() {
+  if (!state.score) return setPlayHint('Load a score to play it.');
+  if (!(await prepareAudio())) return;
+  const { ctx, player } = ensureAudio();
+
+  // Reaching the end and pressing Play again starts over, rather than doing
+  // nothing at a playhead already parked on the final barline.
+  const from = state.playFrom >= playDuration() - 0.05 ? 0 : state.playFrom;
+  const countIn = $('playCountIn').checked;
+  const at = ctx.currentTime + (countIn ? 3 * 0.6 + 0.1 : 0.06);
+  player.start(at, from);
+  if (countIn) scheduleCountIn(ctx, at, 3, 0.6, player.master);
+
+  state.playing = true;
+  sheet.playhead = from;
+  updateTransport();
+  if (!raf) loop();
+}
+
+function pausePlayback() {
+  if (audio) audio.player.stop();
+  state.playing = false;
+  updateTransport();
+  sheet.draw();
+}
+
+/** Stop and leave the playhead where the sound got to, so Play resumes there. */
+function stopPlayback() {
+  state.playFrom = Math.max(0, Math.min(playDuration(), playPosition()));
+  pausePlayback();
+}
+
+function finishPlayback() {
+  state.playFrom = playDuration();
+  sheet.playhead = state.playFrom;
+  pausePlayback();
+  updateClock();
+}
+
+async function seekTo(t) {
+  const dur = playDuration();
+  state.playFrom = Math.max(0, Math.min(dur || t, t));
+  sheet.playhead = state.playFrom;
+  if (state.playing && audio) {
+    audio.player.stop();
+    audio.player.start(audio.ctx.currentTime + 0.05, state.playFrom);
+  }
+  updateClock();
+  sheet.draw();
+}
+
+function loop() {
+  // Torn down rather than left spinning on every frame doing nothing, so a
+  // stopped transport lets the tab idle.
+  if (!state.playing) {
+    raf = null;
+    return;
+  }
+  raf = requestAnimationFrame(loop);
+  const dur = playDuration();
+  const pos = playPosition();
+  if (dur && pos >= dur) return finishPlayback();
+
+  // Negative while a count-in is running: the playhead waits at the downbeat
+  // rather than reversing into the previous system.
+  const shown = Math.max(0, pos);
+  state.playFrom = shown;
+  sheet.playhead = shown;
+  if ($('playFollow').checked) sheet.followPlayhead();
+  sheet.draw();
+  updateClock(pos);
+}
+
+const clockText = (s) => {
+  const t = Math.max(0, s);
+  const m = Math.floor(t / 60);
+  return `${m}:${(t - m * 60).toFixed(1).padStart(4, '0')}`;
+};
+
+function updateClock(raw = null) {
+  const dur = playDuration();
+  const pos = state.playFrom;
+  $('playClock').textContent =
+    raw != null && raw < 0 ? `–${Math.ceil(-raw)}` : clockText(pos);
+  $('playOf').textContent = `/ ${clockText(dur)}`;
+  if (!scrubbing) $('playScrub').value = dur > 0 ? pos / dur : 0;
+}
+
+function updateTransport() {
+  $('playBtn').textContent = state.playing ? 'Pause' : 'Play';
+  $('playBtn').classList.toggle('playing', state.playing);
+}
+
+function setPlayHint(text) {
+  $('playHint').textContent = text;
+}
+
+/**
+ * The balance fader only means something when there is something else to
+ * balance against — playing the full score, there is not.
+ */
+function updateMixControls() {
+  const solo = sheet.target !== 'score';
+  $('playBalance').disabled = !solo || !state.hasEnsemble;
+  const name =
+    solo
+      ? state.project.parts.find((p) => p.id === sheet.target)?.name || 'this part'
+      : null;
+  $('playBalanceLabel').textContent = solo
+    ? `Balance — ${Math.round((1 - state.balance) * 100)}% ${name} / ${Math.round(state.balance * 100)}% the rest`
+    : 'Balance — the full score is playing';
+  $('playVolumeLabel').textContent = `Volume — ${Math.round(state.volume * 100)}%`;
+  $('playMixHint').textContent = solo
+    ? 'Fade the rest of the score in behind the part being engraved.'
+    : 'Choose a part below the score to hear it against the rest.';
+}
+
+$('playBtn').onclick = () => (state.playing ? pausePlayback() : startPlayback());
+$('stopBtn').onclick = () => stopPlayback();
+$('rewindBtn').onclick = () => seekTo(0);
+
+$('playScrub').oninput = () => {
+  scrubbing = true;
+  const dur = playDuration();
+  state.playFrom = parseFloat($('playScrub').value) * dur;
+  sheet.playhead = state.playFrom;
+  updateClock();
+  sheet.draw();
+};
+$('playScrub').onchange = () => {
+  scrubbing = false;
+  seekTo(state.playFrom);
+};
+
+$('playFollow').onchange = () => {
+  if ($('playFollow').checked) {
+    sheet.followPlayhead();
+    sheet.draw();
+  }
+};
+
+sheet.addEventListener('seek', (ev) => seekTo(ev.detail));
+
+/* ---- timbre ---- */
+
+const drawWave = () =>
+  drawTimbreWave($('waveView'), state.timbre, { line: '#7ee0c0', axis: '#222a34' });
+
+$('timbre').oninput = () => {
+  state.timbre = parseFloat($('timbre').value);
+  $('timbreLabel').textContent = timbreName(state.timbre);
+  drawWave();
+};
+
+/**
+ * Re-render on release rather than while dragging: each render is a pass over
+ * the whole score, and a dragged slider would queue dozens of them.
+ */
+$('timbre').onchange = async () => {
+  if (!state.score) return;
+  if (!state.playing) return void prepareAudio();
+  // Pick playback up where it left off, so the change is heard rather than
+  // described.
+  const at = Math.max(0, playPosition());
+  audio.player.stop();
+  if (await prepareAudio()) {
+    if (state.playing) audio.player.start(audio.ctx.currentTime + 0.05, at);
+  }
+};
+
+$('playBalance').oninput = () => {
+  state.balance = parseFloat($('playBalance').value);
+  if (audio) audio.player.setBalance(state.balance);
+  updateMixControls();
+};
+$('playVolume').oninput = () => {
+  state.volume = parseFloat($('playVolume').value);
+  if (audio) audio.player.setVolume(state.volume);
+  updateMixControls();
+};
+
+/* ------------------------------------------------------------------ *
  * View
  * ------------------------------------------------------------------ */
 
@@ -1143,6 +1485,14 @@ window.addEventListener('keydown', (ev) => {
     }
   }
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) return;
+  // Space starts and stops playback, as it does in Dorico. Only in Play mode, so
+  // it cannot surprise anyone mid-edit.
+  if (ev.key === ' ' && sheet.mode === 'play') {
+    ev.preventDefault();
+    if (state.playing) pausePlayback();
+    else startPlayback();
+    return;
+  }
   if (ev.key === 'a' && (ev.metaKey || ev.ctrlKey) && sheet.mode === 'write') {
     ev.preventDefault();
     sheet.selectMany(listedMarks().map((a) => a.id));
@@ -1183,3 +1533,7 @@ function escapeHtml(s) {
 
 syncControls();
 refresh();
+$('timbreLabel').textContent = timbreName(state.timbre);
+updateTransport();
+updateClock();
+updateMixControls();

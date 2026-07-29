@@ -38,6 +38,13 @@ const C = {
   selected: '#ffb648',
   breakSystem: '#4da3ff',
   breakPage: '#ff7bd0',
+  /**
+   * The playhead. Green as in every sequencer and in Dorico, and given a solid
+   * head at the top so it is told apart by shape as well as hue — the break
+   * flags are also vertical lines, and they are dashed and flagged for the same
+   * reason.
+   */
+  playhead: '#2ee36a',
 };
 
 const RULER_H = 24;
@@ -79,10 +86,14 @@ export class EngraveCanvas extends EventTarget {
     this.selectedBreakId = null;
     this._cursor = null;
 
+    /** Score time the playhead sits at, or null when there is nothing to show. */
+    this.playhead = null;
+
     this._hit = [];
     this._breakHits = [];
     this._frames = [];
     this._bands = []; // {band, xFor, tFor, x0, x1, top, height}
+    this._pageSpans = []; // {tA, tB, y} per page, for following the playhead
     this._drag = null;
     this._contentH = 0;
 
@@ -559,6 +570,46 @@ export class EngraveCanvas extends EventTarget {
     }
   }
 
+  /**
+   * The playhead: where the sound has got to.
+   *
+   * Drawn through the system that carries the current instant, in both views and
+   * over everything else — it reports a moving position rather than describing
+   * the music, so being hidden behind a ribbon would make it useless.
+   */
+  _drawPlayhead() {
+    if (this.playhead == null) return;
+    const g = this.ctx;
+    const t = this.playhead;
+    const frame =
+      this._frames.find((f) => t >= f.tA - 1e-6 && t < f.tB + 1e-6) ||
+      // Past the end of the last system, the playhead rests on its final edge
+      // rather than vanishing, which is what "finished" looks like.
+      (this._frames.length ? this._frames[this._frames.length - 1] : null);
+    if (!frame) return;
+
+    const x = Math.min(frame.x1, Math.max(frame.x0, frame.xFor(t)));
+    if (x < -10 || x > this.w + 10) return;
+    const top = frame.top;
+    const bottom = frame.bottom;
+    if (bottom < 0 || top > this.h) return;
+
+    g.strokeStyle = C.playhead;
+    g.lineWidth = 1.6;
+    g.beginPath();
+    g.moveTo(x, top);
+    g.lineTo(x, bottom);
+    g.stroke();
+
+    g.fillStyle = C.playhead;
+    g.beginPath();
+    g.moveTo(x - 5, top - 8);
+    g.lineTo(x + 5, top - 8);
+    g.lineTo(x, top);
+    g.closePath();
+    g.fill();
+  }
+
   /* ---------------- page ---------------- */
 
   _drawPages() {
@@ -572,6 +623,14 @@ export class EngraveCanvas extends EventTarget {
     const x0 = Math.max(10, (this.w - pw) / 2);
 
     this._contentH = cast.pages.length * (ph + PAGE_GAP) + PAGE_GAP;
+
+    // Where every page sits and what it covers, including the ones off screen —
+    // which is what following the playhead onto the next page needs.
+    this._pageSpans = cast.pages.map((pg, pi) => ({
+      tA: pg.systems[0].tA,
+      tB: pg.systems[pg.systems.length - 1].tB,
+      y: PAGE_GAP + pi * (ph + PAGE_GAP),
+    }));
 
     cast.pages.forEach((pg, pi) => {
       const py = PAGE_GAP + pi * (ph + PAGE_GAP) - this.scrollY;
@@ -665,6 +724,39 @@ export class EngraveCanvas extends EventTarget {
     } else {
       this._drawGalley();
     }
+    this._drawPlayhead();
+  }
+
+  /**
+   * Bring the playhead into view.
+   *
+   * Page view jumps to the page it is on and keeps it in the upper half, so
+   * there is music visible ahead of it rather than behind. Galley pages the
+   * window along a screenful at a time instead of scrolling continuously, since
+   * a strip sliding under a fixed line is much harder to read from than a static
+   * one the line crosses.
+   */
+  followPlayhead() {
+    if (this.playhead == null || !this.score) return;
+    const t = this.playhead;
+
+    if (this.view === 'galley') {
+      if (t < this.t0 || t > this.t0 + this.tSpan * 0.92) {
+        this.t0 = Math.max(0, t - this.tSpan * 0.15);
+      }
+      return;
+    }
+
+    // Read from what the last frame laid out rather than casting off again: the
+    // two would be computing the same page positions twice per frame, and could
+    // drift apart if only one of them were ever changed.
+    for (let i = 0; i < this._pageSpans.length; i++) {
+      const span = this._pageSpans[i];
+      if (t > span.tB + 1e-6 && i < this._pageSpans.length - 1) continue;
+      const want = span.y - Math.max(0, this.h * 0.12);
+      if (Math.abs(want - this.scrollY) > 2) this.scrollY = Math.max(0, want);
+      return;
+    }
   }
 
   /* ---------------- interaction ---------------- */
@@ -744,7 +836,9 @@ export class EngraveCanvas extends EventTarget {
         }
       }
 
-      const hit = this._at(x, y);
+      // Play mode does not edit: a click there is asking to hear that moment,
+      // even when it lands on a mark, so marks are not hit-tested at all.
+      const hit = this.mode === 'play' ? null : this._at(x, y);
       if (hit) {
         // Grabbing a mark already in the selection moves the whole selection.
         // Grabbing one outside it selects just that one first, so a drag never
@@ -777,6 +871,18 @@ export class EngraveCanvas extends EventTarget {
       // Clicking empty space places something, and which thing depends on the
       // mode. Setup places nothing — it is about naming parts, and a stray
       // click there should not alter the music.
+      if (this.mode === 'play') {
+        // Clicking the score moves the playback position to it, as it does in
+        // Dorico: the obvious meaning of pointing at a moment in Play mode.
+        const f = this._frameAt(x, y);
+        if (f) {
+          this.dispatchEvent(
+            new CustomEvent('seek', { detail: Math.max(0, f.tFor(x)) })
+          );
+        }
+        this.draw();
+        return;
+      }
       if (this.mode === 'engrave') {
         const f = this._frameAt(x, y);
         if (f && x >= f.x0) {

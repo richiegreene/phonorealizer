@@ -240,15 +240,21 @@ kill mid-rehearsal — the performer is told.
 ```
 server/hub.py            clock probes, session state, score distribution, static serving
 static/js/
-  lib/binser.js          justidraw .sav reader (iterative — see above)
-  score.js               both formats -> one normalised model; canonical numbering
   net.js                 WebSocket + the clock estimator
   analyser.js            microphone pitch/amplitude; peakFrequency() is pure and testable
-  synth.js               monitor mix, scheduling, buffer budget
-  render-worker.js       additive re-synthesis off the main thread
   render.js              the scrolling display
   performer.js / conductor.js
+../phonorealism_shared/js/          served at /shared
+  lib/binser.js          justidraw .sav reader (iterative — see above)
+  score.js               both formats -> one normalised model; canonical numbering
+  synth.js               monitor mix, scheduling, buffer budget, the timbre morph
+  render-worker.js       additive re-synthesis off the main thread
 ```
+
+The synth is shared with the engraver, which plays the layout it is engraving
+through the same renderer — see its Play mode. Two re-synthesisers would
+eventually disagree about what the score sounds like, and the disagreement would
+surface as a performer and a composer hearing different music.
 
 The score parsers run **only in the browser**, so there is exactly one
 implementation of each format; the hub just stores and forwards the normalised

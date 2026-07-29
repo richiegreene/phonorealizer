@@ -1,12 +1,17 @@
 /*
- * synth.js — the in-ear reference.
+ * synth.js — re-synthesis of a score for listening to.
  *
- * Each performer hears their own line re-synthesised from the score, with a
- * balance fader against the rest of the ensemble. Both are rendered up front
- * into AudioBuffers rather than driven by live oscillators: a phonorealism
- * score can carry dozens of simultaneous partials, and a pre-rendered buffer
- * starts sample-accurately at a scheduled time, which a pile of oscillator
- * nodes does not reliably do on a phone.
+ * Two callers, one engine. In the performer app each player hears their own line
+ * with a balance fader against the rest of the ensemble; in the engraver the same
+ * split plays the layout on screen — the part being engraved against everything
+ * else, or the full score alone. The distinction is only which partials are
+ * called "own", so there is one implementation rather than two that would
+ * eventually disagree about what the score sounds like.
+ *
+ * Both mixes are rendered up front into AudioBuffers rather than driven by live
+ * oscillators: a phonorealism score can carry dozens of simultaneous partials,
+ * and a pre-rendered buffer starts sample-accurately at a scheduled time, which
+ * a pile of oscillator nodes does not reliably do on a phone.
  */
 
 /**
@@ -81,7 +86,11 @@ export class ScorePlayer {
     const hasRest = scoreJSON.partials.some((p) => !ownSet.has(p.i));
     const withEnsemble = hasRest && bytesPerMix * 2 <= MAX_BUFFER_BYTES;
 
-    if (!this.worker) this.worker = new Worker('/static/js/render-worker.js');
+    // Resolved against this module's own URL rather than hard-coded, because
+    // the two applications mount the shared directory at different paths.
+    if (!this.worker) {
+      this.worker = new Worker(new URL('./render-worker.js', import.meta.url));
+    }
     const id = Math.random().toString(36).slice(2);
 
     return new Promise((resolve, reject) => {
@@ -191,6 +200,97 @@ export class ScorePlayer {
     this.ownBuffer = null;
     this.restBuffer = null;
   }
+}
+
+/* ------------------------------------------------------------------ *
+ * Timbre
+ *
+ * The morph position, 0..300, runs sine -> triangle -> saw -> square with a
+ * linear crossfade between adjacent shapes, matching the "Basic Shapes" preset
+ * in the desktop modifier's wavetable dialog. Naming and drawing it live here
+ * beside the renderer so that the label, the picture and the sound cannot
+ * disagree about what the slider is set to.
+ * ------------------------------------------------------------------ */
+
+export const TIMBRE_MAX = 300;
+
+const SHAPE_NAMES = ['Sine', 'Triangle', 'Sawtooth', 'Square'];
+
+/**
+ * Naive shape functions, for the preview only.
+ *
+ * What you actually hear is band-limited (see render-worker.js), but an ideal
+ * square reads as a square at a glance, whereas a band-limited one at this size
+ * is mostly Gibbs ringing. The picture is an affordance for choosing a shape,
+ * not an oscilloscope.
+ */
+const SHAPE_FNS = [
+  (x) => Math.sin(2 * Math.PI * x),
+  (x) => 4 * Math.abs(x - Math.floor(x + 0.5)) - 1,
+  (x) => 2 * (x - Math.floor(x + 0.5)),
+  (x) => (x % 1 < 0.5 ? 1 : -1),
+];
+
+/** Where a slider position sits between two shapes. */
+function morph(value) {
+  const pos = Math.min(3, Math.max(0, value / 100));
+  const lo = Math.min(2, Math.floor(pos));
+  return { lo, frac: pos - lo };
+}
+
+/** What to call a timbre setting: a shape, or how far between two of them. */
+export function timbreName(value) {
+  const { lo, frac } = morph(value);
+  if (frac < 0.02) return SHAPE_NAMES[lo];
+  if (frac > 0.98) return SHAPE_NAMES[lo + 1];
+  return `${SHAPE_NAMES[lo]} → ${SHAPE_NAMES[lo + 1]} ${Math.round(frac * 100)}%`;
+}
+
+/**
+ * Draw two cycles of the chosen wave into a canvas, sizing it for the display.
+ * @param {HTMLCanvasElement} canvas
+ * @param {number} value 0..TIMBRE_MAX
+ */
+export function drawTimbreWave(canvas, value, { line = '#4da3ff', axis = '#232a33' } = {}) {
+  const rect = canvas.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(1, Math.round(rect.width));
+  const h = Math.max(1, Math.round(rect.height));
+  if (canvas.width !== w * dpr || canvas.height !== h * dpr) {
+    canvas.width = w * dpr;
+    canvas.height = h * dpr;
+  }
+  const g = canvas.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+
+  const { lo, frac } = morph(value);
+  const a = SHAPE_FNS[lo];
+  const b = SHAPE_FNS[Math.min(3, lo + 1)];
+
+  g.strokeStyle = axis;
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(0, h / 2 + 0.5);
+  g.lineTo(w, h / 2 + 0.5);
+  g.stroke();
+
+  g.strokeStyle = line;
+  g.lineWidth = 2;
+  g.lineJoin = 'round';
+  g.shadowColor = line;
+  g.shadowBlur = 6;
+  g.beginPath();
+  const cycles = 2;
+  for (let px = 0; px <= w; px++) {
+    const x = (px / w) * cycles;
+    const y = a(x) + frac * (b(x) - a(x));
+    const py = h / 2 - y * (h / 2 - 8);
+    if (px === 0) g.moveTo(px, py);
+    else g.lineTo(px, py);
+  }
+  g.stroke();
+  g.shadowBlur = 0;
 }
 
 /**

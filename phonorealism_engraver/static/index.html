@@ -30,6 +30,7 @@
       <button class="tab active" data-tab="setup">Setup</button>
       <button class="tab" data-tab="write">Write</button>
       <button class="tab" data-tab="engrave">Engrave</button>
+      <button class="tab" data-tab="play">Play</button>
     </div>
 
     <div id="issues" class="issues hidden"></div>
@@ -292,6 +293,67 @@
               <label class="check"><input type="checkbox" id="showTitle" /><span>Title on first page</span></label>
               <label class="check"><input type="checkbox" id="showPageNumbers" /><span>Page numbers</span></label>
               <div class="hint">All off by default — the notation is the ribbon.</div>
+            </div>
+          </details>
+        </div>
+        <!-- ============ PLAY ============ -->
+        <div class="tabpane hidden" data-pane="play">
+          <details class="group" open>
+            <summary>Transport</summary>
+            <div class="body">
+              <div class="row wrap">
+                <button class="primary" id="playBtn">Play</button>
+                <button class="sm" id="stopBtn">Stop</button>
+                <button class="sm" id="rewindBtn">To start</button>
+              </div>
+              <div class="transport">
+                <span class="clock" id="playClock">0:00.0</span>
+                <span class="hint" id="playOf">/ 0:00.0</span>
+              </div>
+              <input type="range" id="playScrub" min="0" max="1" step="0.001" value="0" />
+              <label class="check">
+                <input type="checkbox" id="playFollow" checked />
+                <span>Follow the playhead</span>
+              </label>
+              <label class="check">
+                <input type="checkbox" id="playCountIn" />
+                <span>Count-in</span>
+              </label>
+              <div class="hint" id="playHint">Load a score to play it.</div>
+            </div>
+          </details>
+
+          <details class="group" open>
+            <summary>Playback timbre</summary>
+            <div class="body">
+              <canvas id="waveView" class="wave"></canvas>
+              <label class="field" style="margin-top: 10px">
+                <span id="timbreLabel">Triangle</span>
+                <input type="range" id="timbre" min="0" max="300" step="1" value="100" />
+              </label>
+              <div class="wave-ticks">
+                <span>sine</span><span>tri</span><span>saw</span><span>square</span>
+              </div>
+              <div class="hint" style="margin-top: 8px">
+                The same re-synthesis the performers hear in their ears, so what
+                you audition here is what they will be given. Sine is purest for
+                hearing intonation; brighter shapes separate crowded partials.
+              </div>
+            </div>
+          </details>
+
+          <details class="group" open>
+            <summary>Mix</summary>
+            <div class="body">
+              <label class="field">
+                <span id="playBalanceLabel">Balance</span>
+                <input type="range" id="playBalance" min="0" max="1" step="0.01" value="0" />
+              </label>
+              <label class="field">
+                <span id="playVolumeLabel">Volume</span>
+                <input type="range" id="playVolume" min="0" max="1" step="0.01" value="0.8" />
+              </label>
+              <div class="hint" id="playMixHint"></div>
             </div>
           </details>
         </div>
