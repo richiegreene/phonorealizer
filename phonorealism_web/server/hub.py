@@ -249,11 +249,16 @@ async def info(request: Request) -> JSONResponse:
     # The LAN URL is what the hub is really bound to, which is not necessarily
     # what the tunnel presents.
     lan_scheme = request.url.scheme
+    # Browsers treat loopback as a secure context, so plain http on localhost
+    # gets a microphone just fine. Judging by scheme alone would put a false
+    # "no microphones here" warning in front of anyone testing locally.
+    hostname = host.rsplit(":", 1)[0].strip("[]")
+    loopback = hostname in ("localhost", "127.0.0.1", "::1") or hostname.endswith(".localhost")
     return JSONResponse(
         {
             "joinUrl": f"{scheme}://{host}/performer",
             "lanUrl": f"{lan_scheme}://{lan_ip()}:{request.url.port or 8000}/performer",
-            "secure": scheme == "https",
+            "secure": scheme == "https" or loopback,
             "serverTime": now_ms(),
         }
     )
