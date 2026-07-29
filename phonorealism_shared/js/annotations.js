@@ -42,6 +42,69 @@ export const KINDS = {
 
 export const KIND_ORDER = ['lyric', 'expression', 'dynamic', 'rehearsal', 'text'];
 
+/**
+ * Vertical placement, in two parts.
+ *
+ * `place` is the zone — above the staff, within it, or below it. `align` is what
+ * that zone is measured from, and the two readings are both wanted:
+ *
+ *   line   hangs off the sounding line, so the mark travels with its partial as
+ *          the pitch scale changes. What a mark naming a moment in one line
+ *          wants.
+ *   staff  sits at a fixed height in the zone, so every mark placed there shares
+ *          one baseline. What a line of lyrics wants — text that rode the melody
+ *          up and down would be unreadable as a line of words.
+ */
+export const PLACES = {
+  above: 'Above the staff',
+  on: 'Within the staff',
+  below: 'Below the staff',
+};
+
+export const PLACE_ORDER = ['above', 'on', 'below'];
+
+export const ALIGNMENTS = {
+  line: 'Follow the sounding line',
+  staff: 'Align to the staff',
+};
+
+/**
+ * Place many marks at once, letting the engraver position them.
+ *
+ * Applying a placement is a request to have them formatted, so the hand-set
+ * nudge goes with it — leaving it would be the one thing guaranteed to keep them
+ * out of line with each other.
+ */
+export function setPlacement(project, ids, { place = null, align = null } = {}) {
+  const wanted = new Set(ids || []);
+  const done = [];
+  for (const a of project.annotations || []) {
+    if (!wanted.has(a.id)) continue;
+    if (place) a.place = place;
+    if (align) a.align = align;
+    a.dy = 0;
+    done.push(a);
+  }
+  return done;
+}
+
+/**
+ * Shift every mark in a set by the same amount: seconds across, cents up.
+ *
+ * Cents rather than pixels for the same reason a single mark stores its nudge
+ * that way — a group dragged in pixels would come apart the moment the staff
+ * height changed.
+ */
+export function nudgeMany(project, moves) {
+  for (const a of project.annotations || []) {
+    const m = moves.get(a.id);
+    if (!m) continue;
+    a.t = Math.max(0, m.t);
+    a.dy = m.dy;
+    if (a.t2 != null && m.t2 != null) a.t2 = Math.max(a.t, m.t2);
+  }
+}
+
 let counter = 0;
 function newId() {
   counter += 1;
@@ -56,8 +119,9 @@ function newId() {
  * @property {number} t       seconds
  * @property {number|null} t2 optional end time; present means it spans
  * @property {string} text
- * @property {'above'|'below'|'on'} place
- * @property {number} dy      vertical nudge in cents, relative to the line
+ * @property {'above'|'below'|'on'} place  the zone; see PLACES
+ * @property {'line'|'staff'} align        what the zone is measured from
+ * @property {number} dy      vertical nudge in cents, relative to the anchor
  * @property {object} style   { size, italic, bold }
  */
 
@@ -68,6 +132,7 @@ export function makeAnnotation({
   t2 = null,
   text = '',
   place = null,
+  align = 'line',
   dy = 0,
   style = null,
 } = {}) {
@@ -80,6 +145,7 @@ export function makeAnnotation({
     t2,
     text,
     place: place || def.place,
+    align,
     dy,
     style: style || {
       size: def.size,

@@ -62,6 +62,40 @@ green, so "simultaneously" is visible rather than implied. *Split to parts* turn
 one into editable copies when they need to diverge. An **Until** time makes it a
 span with a continuation line, for *cresc.* or a held direction.
 
+**Shift-click** gathers several marks, on the score or in the list — the two are
+interchangeable, so a run of lyrics can be collected from whichever is easier to
+hit. Dragging any one of them moves the whole selection, keeping the spacing
+between them: the delta is applied in seconds and cents, not pixels, so a group
+does not come apart when the staff height changes.
+
+*Vertical alignment* is what a selection is mostly for. A mark's placement is two
+decisions, and both are wanted:
+
+| | |
+| --- | --- |
+| **place** | the zone — above the staff, within it, or below it |
+| **align** | what that zone is measured from |
+
+Aligned to the **sounding line**, a mark hangs off its partial and travels with
+it as the pitch scale changes — right for something naming a moment in one line.
+Aligned to the **staff**, it sits at a fixed height in its zone, and every mark
+placed there shares one baseline. Lyrics need the second: text that rode the
+melody up and down is not readable as a line of words.
+
+So the **Above / Within / Below** buttons do both at once — they move the
+selection into the zone *and* align it there, clearing the hand-set nudge that
+would otherwise be the one thing keeping the marks out of line. *Follow the line*
+puts them back on their partials. The modal sets the two independently when a
+single mark wants a zone without the alignment.
+
+Where the zone physically is depends on the staff. An un-normalised staff has a
+fixed height and its marks are clamped inside it, so above and below mean the
+head and foot of the staff — an annotation you cannot see is worse than one
+slightly crowded. Turn on *Normalise height per system* and the staff is only as
+tall as its music, so above and below become genuinely outside the ribbon, in
+rows the staff reserves room for. Either way marks that would collide are stacked
+into further rows rather than printed on top of each other.
+
 **Engrave** controls how it sits on the page:
 
 | | |

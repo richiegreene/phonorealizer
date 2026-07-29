@@ -500,23 +500,36 @@ function centsWindow(partials, tA, tB) {
 }
 
 /**
- * Stack the above and below annotations of one part into rows clear of the
- * ribbon, and report how much room those rows need.
+ * Stack annotations of one part into rows, and report how much room the rows
+ * outside the staff need.
+ *
+ * Two things are being solved with one mechanism.
  *
  * A normalised staff is only as tall as the music, so there is no slack inside
- * it to hold text: marks go outside the ribbon instead, in as many rows as it
- * takes for none of them to collide. The vertical nudge is folded into the room
- * reserved, so dragging a mark further out still leaves it inside its own
- * staff rather than over the neighbouring one.
+ * it to hold text: every above or below mark goes *outward*, clear of the
+ * ribbon, in as many rows as it takes for none of them to collide, and the staff
+ * reserves room for them. The vertical nudge is folded into that room, so
+ * dragging a mark further out still leaves it inside its own staff rather than
+ * over the neighbouring one.
+ *
+ * A mark aligned to the staff wants the same collision-free rows, but measured
+ * from a fixed height in its zone rather than from the sounding line. Where the
+ * staff has slack — an un-normalised one always does — those rows stack *inward*
+ * and cost the staff nothing.
  */
-function annotationRows(project, part, tA, tB, pxPerSecond, pxPerCent) {
+function annotationRows(project, part, tA, tB, pxPerSecond, pxPerCent, outward) {
+  // A mark is formatted into a row when the staff has no room for it inside
+  // (normalised) or when it has been aligned to the staff on purpose.
+  const eligible = (a) =>
+    (outward && (a.place === 'above' || a.place === 'below')) || a.align === 'staff';
+
   const marks = (project?.annotations || [])
     .filter(
       (a) =>
         (a.scope === GLOBAL || a.scope === part.id) &&
         a.t >= tA - 0.001 &&
         a.t <= tB + 0.001 &&
-        (a.place === 'above' || a.place === 'below')
+        eligible(a)
     )
     .sort((x, y) => x.t - y.t || String(x.id).localeCompare(String(y.id)));
 
@@ -526,10 +539,10 @@ function annotationRows(project, part, tA, tB, pxPerSecond, pxPerCent) {
   let maxSize = 0;
   for (const a of marks) maxSize = Math.max(maxSize, a.style?.size || 13);
   // Deep enough that a row's text, its descenders and a hair of leading all sit
-  // inside it — see the placement in drawing code, which depends on this.
+  // inside it — see annotationY, which depends on this.
   const rowH = maxSize + 6;
 
-  const ends = { above: [], below: [] };
+  const ends = { above: [], below: [], on: [] };
   let padTop = 0;
   let padBottom = 0;
   for (const a of marks) {
@@ -539,7 +552,7 @@ function annotationRows(project, part, tA, tB, pxPerSecond, pxPerCent) {
       x + estimateTextWidth(a.text, size) + 8,
       a.t2 != null && a.t2 > a.t ? (Math.min(a.t2, tB) - tA) * pxPerSecond : 0
     );
-    const lane = ends[a.place];
+    const lane = ends[a.place] || ends.on;
     let row = 0;
     while (row < lane.length && lane[row] > x) row++;
     if (row >= MAX_ROWS) {
@@ -550,8 +563,11 @@ function annotationRows(project, part, tA, tB, pxPerSecond, pxPerCent) {
       for (let i = 1; i < MAX_ROWS; i++) if (lane[i] < lane[row]) row = i;
     }
     lane[row] = Math.max(lane[row] ?? 0, right);
-    rows.set(a.id, { place: a.place, row, size });
 
+    const outer = outward && (a.place === 'above' || a.place === 'below');
+    rows.set(a.id, { place: a.place, row, size, outward: outer });
+
+    if (!outer) continue;
     const nudge = (a.dy || 0) * pxPerCent;
     const need = (row + 1) * rowH;
     if (a.place === 'above') padTop = Math.max(padTop, need + Math.max(0, nudge));
@@ -614,38 +630,40 @@ export function measureBands(parts, score, layout, tA = null, tB = null, opts = 
       padBottom: 0,
     };
 
+    // Half the thickest the ribbon can get, so its edge is not clipped by the
+    // crop that its own centreline exactly fits.
+    const ribbonHalf = (0.4 + (layout.ribbonScale || 0)) / 2;
+    const win = windowed ? centsWindow(partials, tA, tB) : null;
+
     if (!windowed) {
       metric.centre = fullCentre;
       metric.span = fullSpan;
       metric.coreH = layout.staffHeight;
-      out.push(metric);
-      continue;
-    }
-
-    const win = centsWindow(partials, tA, tB);
-    // Half the thickest the ribbon can get, so its edge is not clipped by the
-    // crop that its own centreline exactly fits.
-    const ribbonHalf = (0.4 + (layout.ribbonScale || 0)) / 2;
-    if (!win) {
+    } else if (!win) {
       // Nothing sounding here. A part that is tacit through a system earns no
       // height in it; the label still has a sliver to sit against.
       metric.centre = fullCentre;
       metric.coreH = Math.max(MIN_CORE, ribbonHalf * 2);
       metric.span = metric.coreH / 2 / pxPerCent;
-      out.push(metric);
-      continue;
+    } else {
+      const coreH = Math.max(MIN_CORE, (win.hi - win.lo) * pxPerCent + ribbonHalf * 2);
+      metric.centre = (win.lo + win.hi) / 2;
+      metric.coreH = coreH;
+      metric.span = coreH / 2 / pxPerCent;
     }
 
-    const coreH = Math.max(MIN_CORE, (win.hi - win.lo) * pxPerCent + ribbonHalf * 2);
-    metric.centre = (win.lo + win.hi) / 2;
-    metric.coreH = coreH;
-    metric.span = coreH / 2 / pxPerCent;
-
-    const rows = annotationRows(opts.project, part, tA, tB, pxPerSecond, pxPerCent);
-    metric.rows = rows.rows;
-    metric.rowH = rows.rowH;
-    metric.padTop = rows.padTop;
-    metric.padBottom = rows.padBottom;
+    // Rows are wanted either way: outward when the staff has no slack of its
+    // own, inward for marks aligned to the staff, which an un-normalised staff
+    // has room for.
+    if (Number.isFinite(tA) && Number.isFinite(tB)) {
+      const rows = annotationRows(
+        opts.project, part, tA, tB, pxPerSecond, pxPerCent, windowed
+      );
+      metric.rows = rows.rows;
+      metric.rowH = rows.rowH;
+      metric.padTop = rows.padTop;
+      metric.padBottom = rows.padBottom;
+    }
     out.push(metric);
   }
   return out;
@@ -725,28 +743,48 @@ export function centsForBand(b, y) {
 }
 
 /**
- * Where an annotation's baseline goes, and whether it was placed in a row
- * outside the ribbon or nudged inside the staff.
+ * Where an annotation's baseline goes.
  *
- * Normalised staves stack above and below marks in rows clear of the notation —
- * there is no room inside for them. Un-normalised, the staff has slack and the
- * mark keeps its conventional offset from the line it belongs to.
+ * Three cases, in the order they take precedence:
+ *
+ *   outward row  a normalised staff has no room inside it, so above and below
+ *                marks are stacked clear of the ribbon in space the staff
+ *                reserved for them.
+ *   staff-aligned  a fixed height in the zone, stacking inward into the slack
+ *                the staff has. Every mark placed this way shares one baseline,
+ *                which is the point of it.
+ *   line-relative  the default: a conventional offset from the sounding line,
+ *                so the mark travels with the partial it belongs to.
  */
 export function annotationY(b, a, size, base, scale = 1) {
   const row = b.rows?.get(a.id);
   const nudge = ((a.dy || 0) / b.span) * (b.coreH / 2);
-  if (row) {
-    const y =
-      row.place === 'above'
-        ? b.coreTop - row.row * b.rowH - 3 * scale - nudge
-        : b.coreTop + b.coreH + row.row * b.rowH + size + 3 * scale - nudge;
-    return y;
+  const inset = 3 * scale;
+  const clamp = (y) =>
+    Math.min(
+      b.coreTop + b.coreH - 4 * scale,
+      Math.max(b.coreTop + size + 2 * scale, y)
+    );
+
+  if (row?.outward) {
+    return row.place === 'above'
+      ? b.coreTop - row.row * b.rowH - inset - nudge
+      : b.coreTop + b.coreH + row.row * b.rowH + size + inset - nudge;
   }
+
+  if (a.align === 'staff') {
+    const step = (row?.row || 0) * (b.rowH || size + 6 * scale);
+    const y =
+      a.place === 'above'
+        ? b.coreTop + size + inset + step
+        : a.place === 'below'
+          ? b.coreTop + b.coreH - inset - step
+          : b.coreTop + b.coreH / 2 + size / 2 + step;
+    return clamp(y - nudge);
+  }
+
   const off = (a.place === 'above' ? -18 : a.place === 'below' ? 22 : 3) * scale;
-  return Math.min(
-    b.coreTop + b.coreH - 4 * scale,
-    Math.max(b.coreTop + size + 2 * scale, base + off - nudge)
-  );
+  return clamp(base + off - nudge);
 }
 
 /* ------------------------------------------------------------------ *

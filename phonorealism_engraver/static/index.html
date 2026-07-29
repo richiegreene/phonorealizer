@@ -72,11 +72,33 @@
         <!-- ============ WRITE ============ -->
         <div class="tabpane hidden" data-pane="write">
           <details class="group" open>
-            <summary>Selected annotation</summary>
+            <summary>Selection</summary>
             <div class="body">
               <div id="inspector" class="hint">
                 Click anywhere on a part to place a mark exactly there. Click a
                 mark to select it, drag to move, double-click to retype.
+                Shift-click to select several and move or align them together.
+              </div>
+            </div>
+          </details>
+
+          <details class="group" open>
+            <summary>Vertical alignment</summary>
+            <div class="body">
+              <div class="hint" id="alignScope">Nothing selected.</div>
+              <div class="row wrap" style="margin: 10px 0 6px">
+                <button class="sm" id="placeAbove">Above</button>
+                <button class="sm" id="placeWithin">Within</button>
+                <button class="sm" id="placeBelow">Below</button>
+              </div>
+              <div class="row wrap">
+                <button class="sm" id="alignStaff">Align to the staff</button>
+                <button class="sm" id="alignLine">Follow the line</button>
+              </div>
+              <div class="hint" style="margin-top: 8px">
+                A zone button formats the selection into that zone on a common
+                baseline. <em>Follow the line</em> puts them back on their
+                partials, where a mark travels with the pitch it names.
               </div>
             </div>
           </details>
@@ -87,6 +109,7 @@
               <div class="row wrap" style="margin-bottom: 8px">
                 <button class="sm" id="filterAll">All</button>
                 <button class="sm" id="filterGlobal">Full Score only</button>
+                <button class="sm" id="selectAllMarks">Select all</button>
               </div>
               <div id="markList" class="list small"></div>
             </div>
@@ -319,9 +342,18 @@
           <label class="field" style="flex: 1">
             <span>Place</span>
             <select id="mPlace">
-              <option value="above">Above</option>
-              <option value="below">Below</option>
-              <option value="on">On the line</option>
+              <option value="above">Above the staff</option>
+              <option value="on">Within the staff</option>
+              <option value="below">Below the staff</option>
+            </select>
+          </label>
+        </div>
+        <div class="row">
+          <label class="field" style="flex: 1">
+            <span>Vertical alignment</span>
+            <select id="mAlign">
+              <option value="line">Follow the sounding line</option>
+              <option value="staff">Align to the staff</option>
             </select>
           </label>
         </div>

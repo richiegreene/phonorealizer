@@ -11,9 +11,9 @@
 
 import { loadScoreFile, defaultParts, partLabel } from '/shared/score.js';
 import {
-  GLOBAL, KINDS, KIND_ORDER, makeProject, validate,
+  GLOBAL, KINDS, KIND_ORDER, PLACES, ALIGNMENTS, makeProject, validate,
   addAnnotation, removeAnnotation, updateAnnotation, explodeToParts,
-  allSorted, toPartMap,
+  setPlacement, allSorted, toPartMap,
 } from '/shared/annotations.js';
 import {
   defaultLayouts, layoutFor, profileKeyFor, pageGeometry, PAGE_SIZES,
@@ -29,6 +29,8 @@ const state = {
   project: makeProject(),
   filter: 'all',
   editingId: null,
+  /** Every selected mark. `editingId` is the one the panel describes. */
+  selection: [],
   pendingPlace: null,
   editingBreakId: null,
   dirty: false,
@@ -341,7 +343,8 @@ sheet.addEventListener('place', (ev) => {
 });
 sheet.addEventListener('edit', (ev) => openModal(ev.detail));
 sheet.addEventListener('select', (ev) => {
-  state.editingId = ev.detail;
+  state.editingId = ev.detail?.id ?? null;
+  state.selection = ev.detail?.ids ?? [];
   renderInspector();
   renderMarks();
 });
@@ -350,6 +353,21 @@ sheet.addEventListener('edited', () => {
   renderInspector();
   renderMarks();
 });
+
+/** Select one mark from the panel side, keeping the canvas and state in step. */
+function selectOnly(id) {
+  sheet.selectedId = id;
+  state.editingId = id;
+  state.selection = id ? [id] : [];
+}
+
+/** The selected marks, in time order. */
+function selectedMarks() {
+  const ids = new Set(
+    state.selection.length ? state.selection : state.editingId ? [state.editingId] : []
+  );
+  return allSorted(state.project).filter((a) => ids.has(a.id));
+}
 
 function scopeOptions(selectEl, selected) {
   selectEl.innerHTML = `<option value="${GLOBAL}">Full Score</option>`;
@@ -378,6 +396,7 @@ function openModal(id) {
     $('mTime').value = a.t.toFixed(2);
     $('mTime2').value = a.t2 == null ? '' : a.t2.toFixed(2);
     $('mPlace').value = a.place;
+    $('mAlign').value = a.align || 'line';
   } else {
     const p = state.pendingPlace;
     $('mText').value = '';
@@ -385,6 +404,7 @@ function openModal(id) {
     $('mTime').value = (p ? p.t : 0).toFixed(2);
     $('mTime2').value = '';
     $('mPlace').value = 'on';
+    $('mAlign').value = 'line';
   }
   $('mDelete').classList.toggle('hidden', !a);
   $('mExplode').classList.toggle('hidden', !a || a.scope !== GLOBAL);
@@ -402,6 +422,7 @@ $('mSave').onclick = () => {
     t2: $('mTime2').value === '' ? null : parseFloat($('mTime2').value),
     text,
     place: $('mPlace').value,
+    align: $('mAlign').value,
   };
   if (state.editingId) {
     updateAnnotation(state.project, state.editingId, spec);
@@ -414,8 +435,7 @@ $('mSave').onclick = () => {
       const band = bandCentsAt(p.partId, spec.t);
       a.dy = band == null ? 0 : p.cents - band;
     }
-    state.editingId = a.id;
-    sheet.selectedId = a.id;
+    selectOnly(a.id);
   }
   state.pendingPlace = null;
   $('modal').classList.add('hidden');
@@ -446,15 +466,13 @@ function bandCentsAt(partId, t) {
 $('mKind').onchange = () => {};
 $('mDelete').onclick = () => {
   if (state.editingId) removeAnnotation(state.project, state.editingId);
-  state.editingId = null;
-  sheet.selectedId = null;
+  selectOnly(null);
   $('modal').classList.add('hidden');
   touched();
 };
 $('mExplode').onclick = () => {
   if (state.editingId) explodeToParts(state.project, state.editingId);
-  state.editingId = null;
-  sheet.selectedId = null;
+  selectOnly(null);
   $('modal').classList.add('hidden');
   touched();
 };
@@ -463,16 +481,107 @@ $('mCancel').onclick = () => {
   $('modal').classList.add('hidden');
 };
 
+/* ---- vertical alignment, on any number of marks at once ---- */
+
+const ZONE_BUTTONS = [
+  ['placeAbove', 'above'],
+  ['placeWithin', 'on'],
+  ['placeBelow', 'below'],
+];
+
+for (const [id, place] of ZONE_BUTTONS) {
+  // A zone button both moves the marks into the zone and aligns them there:
+  // asking for "below the staff" on a line of lyrics means one baseline, not
+  // each word at its own height under its own partial.
+  $(id).onclick = () => applyPlacement({ place, align: 'staff' });
+}
+$('alignStaff').onclick = () => applyPlacement({ align: 'staff' });
+$('alignLine').onclick = () => applyPlacement({ align: 'line' });
+
+function applyPlacement(spec) {
+  const marks = selectedMarks();
+  if (!marks.length) return;
+  setPlacement(state.project, marks.map((m) => m.id), spec);
+  touched();
+}
+
+/** Say what the alignment buttons would act on, and put them out of use if nothing. */
+function renderAlignPanel(marks) {
+  const n = marks.length;
+  for (const [id] of ZONE_BUTTONS) $(id).disabled = !n;
+  $('alignStaff').disabled = !n;
+  $('alignLine').disabled = !n;
+
+  if (!n) {
+    $('alignScope').textContent =
+      'Nothing selected. Shift-click marks on the score, or in the list below, ' +
+      'to place several at once.';
+    return;
+  }
+  const zones = [...new Set(marks.map((m) => PLACES[m.place] || m.place))];
+  const aligns = [...new Set(marks.map((m) => ALIGNMENTS[m.align || 'line']))];
+  $('alignScope').textContent =
+    `${n === 1 ? 'One mark' : `${n} marks`} · ${zones.join(', ')} · ${aligns.join(', ')}` +
+    // Where the zone actually is depends on whether the staff has slack to
+    // spare, and it is worth saying which regime is in force rather than
+    // leaving the difference to be discovered.
+    (layout().normalizeHeights
+      ? ' — this layout normalises heights, so above and below sit clear of the ribbon.'
+      : ' — above and below sit at the head and foot of the staff. Normalise ' +
+        'height per system to put them outside it.');
+}
+
 function renderInspector() {
   const box = $('inspector');
-  const a = state.project.annotations.find((x) => x.id === state.editingId);
-  if (!a) {
+  const marks = selectedMarks();
+  renderAlignPanel(marks);
+
+  if (!marks.length) {
     box.className = 'hint';
     box.textContent =
       'Click anywhere on a part to place a mark exactly there. Click a mark to ' +
-      'select it, drag to move, double-click to retype.';
+      'select it, drag to move, double-click to retype. Shift-click to select ' +
+      'several and move or align them together.';
     return;
   }
+
+  if (marks.length > 1) {
+    // Deliberately no text or time field: the one thing that is safe to do to a
+    // group is move it or format it, and both are gestures rather than fields.
+    box.className = '';
+    const from = marks[0].t;
+    const to = marks[marks.length - 1].t;
+    const kinds = [...new Set(marks.map((m) => KINDS[m.kind]?.label || m.kind))];
+    box.innerHTML = `
+      <div class="item selected" style="cursor:default">
+        <div class="grow">
+          <div class="nm">${marks.length} marks selected</div>
+          <div class="meta">${from.toFixed(2)}–${to.toFixed(2)}s · ${escapeHtml(kinds.join(', '))}</div>
+        </div>
+      </div>
+      <div class="row wrap" style="margin-top:8px">
+        <button class="sm" id="insDup">Duplicate</button>
+        <button class="sm danger" id="insDel">Delete all</button>
+      </div>
+      <div class="hint" style="margin-top:8px">
+        Drag any one of them on the score to move the whole selection.
+      </div>`;
+    $('insDup').onclick = () => {
+      const copies = marks.map((m) => addAnnotation(state.project, { ...m, t: m.t + 0.5 }));
+      sheet.selectMany(copies.map((c) => c.id));
+      state.selection = copies.map((c) => c.id);
+      state.editingId = state.selection[state.selection.length - 1];
+      touched();
+    };
+    $('insDel').onclick = () => {
+      for (const m of marks) removeAnnotation(state.project, m.id);
+      selectOnly(null);
+      touched();
+    };
+    return;
+  }
+
+  const a = marks[0];
   box.className = '';
   const scopeName =
     a.scope === GLOBAL
@@ -495,14 +604,12 @@ function renderInspector() {
   $('insEdit').onclick = () => openModal(a.id);
   $('insDup').onclick = () => {
     const copy = addAnnotation(state.project, { ...a, t: a.t + 0.5 });
-    sheet.selectedId = copy.id;
-    state.editingId = copy.id;
+    selectOnly(copy.id);
     touched();
   };
   $('insDel').onclick = () => {
     removeAnnotation(state.project, a.id);
-    state.editingId = null;
-    sheet.selectedId = null;
+    selectOnly(null);
     touched();
   };
 }
@@ -518,7 +625,7 @@ function renderMarks() {
   }
   for (const a of marks) {
     const row = document.createElement('button');
-    row.className = 'item' + (a.id === state.editingId ? ' selected' : '');
+    row.className = 'item' + (state.selection.includes(a.id) ? ' selected' : '');
     const grow = document.createElement('div');
     grow.className = 'grow';
     const nm = document.createElement('div');
@@ -526,7 +633,8 @@ function renderMarks() {
     nm.textContent = a.text || '(empty)';
     const meta = document.createElement('div');
     meta.className = 'meta';
-    meta.textContent = `${a.t.toFixed(2)}s · ${KINDS[a.kind]?.label || a.kind}`;
+    const zone = (a.align || 'line') === 'staff' ? `${PLACES[a.place]}, aligned` : PLACES[a.place];
+    meta.textContent = `${a.t.toFixed(2)}s · ${KINDS[a.kind]?.label || a.kind} · ${zone}`;
     grow.append(nm, meta);
     const tag = document.createElement('span');
     tag.className = 'tag' + (a.scope === GLOBAL ? ' global' : '');
@@ -535,9 +643,14 @@ function renderMarks() {
         ? 'score'
         : (state.project.parts.find((p) => p.id === a.scope)?.name || '?').slice(0, 10);
     row.append(grow, tag);
-    row.onclick = () => {
-      state.editingId = a.id;
-      sheet.selectedId = a.id;
+    row.onclick = (ev) => {
+      // Shift-click here does what it does on the score, so a run of lyrics can
+      // be gathered from whichever of the two is easier to hit.
+      if (ev.shiftKey) {
+        sheet.select(a.id, true);
+      } else {
+        selectOnly(a.id);
+      }
       if (sheet.view === 'galley' && (a.t < sheet.t0 || a.t > sheet.t0 + sheet.tSpan)) {
         sheet.t0 = Math.max(0, a.t - sheet.tSpan / 3);
       }
@@ -549,12 +662,22 @@ function renderMarks() {
   }
 }
 
+/** The marks the list is currently showing — what Select all takes. */
+function listedMarks() {
+  const marks = allSorted(state.project);
+  return state.filter === 'global' ? marks.filter((a) => a.scope === GLOBAL) : marks;
+}
+
 $('filterAll').onclick = () => {
   state.filter = 'all';
   renderMarks();
 };
 $('filterGlobal').onclick = () => {
   state.filter = 'global';
+  renderMarks();
+};
+$('selectAllMarks').onclick = () => {
+  sheet.selectMany(listedMarks().map((a) => a.id));
   renderMarks();
 };
 
@@ -875,6 +998,13 @@ function touched() {
 }
 
 function refresh() {
+  // Drop anything that has gone since the selection was made — a mark deleted
+  // from the list, or a whole project opened over the top of this one.
+  const live = new Set((state.project.annotations || []).map((a) => a.id));
+  state.selection = state.selection.filter((id) => live.has(id));
+  if (state.editingId && !live.has(state.editingId)) state.editingId = null;
+  sheet.selection = new Set(state.selection);
+
   sheet.setProject(state.project);
   renderParts();
   renderTargetSelect();
@@ -1013,11 +1143,17 @@ window.addEventListener('keydown', (ev) => {
     }
   }
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) return;
+  if (ev.key === 'a' && (ev.metaKey || ev.ctrlKey) && sheet.mode === 'write') {
+    ev.preventDefault();
+    sheet.selectMany(listedMarks().map((a) => a.id));
+    renderMarks();
+    return;
+  }
   if (ev.key === 'Delete' || ev.key === 'Backspace') {
-    if (state.editingId) {
-      removeAnnotation(state.project, state.editingId);
-      state.editingId = null;
-      sheet.selectedId = null;
+    const marks = selectedMarks();
+    if (marks.length) {
+      for (const m of marks) removeAnnotation(state.project, m.id);
+      selectOnly(null);
       touched();
     } else if (state.editingBreakId) {
       removeBreak(state.project, state.editingBreakId);

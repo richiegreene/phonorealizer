@@ -16,7 +16,7 @@
  */
 
 import { fillRibbon } from '/shared/ribbon.js';
-import { GLOBAL, KINDS } from '/shared/annotations.js';
+import { GLOBAL, KINDS, nudgeMany } from '/shared/annotations.js';
 import {
   castOff, systemBands, orderedParts, layoutFor, pageGeometry,
   timeMarkers, markerLabel, pitchGrid, yForBand, centsForBand,
@@ -61,7 +61,13 @@ export class EngraveCanvas extends EventTarget {
     this.scrollY = 0;
     this.pageZoom = 0.8;
 
-    this.selectedId = null;
+    /**
+     * The selected marks. A set rather than one id because placing a line of
+     * lyrics on a common baseline is an operation on all of them at once —
+     * doing it one mark at a time is how they end up not quite aligned.
+     */
+    this.selection = new Set();
+    this._primary = null;
     this.hoverId = null;
 
     /**
@@ -118,6 +124,59 @@ export class EngraveCanvas extends EventTarget {
   /** The engraving profile for whatever layout is on screen. */
   get layout() {
     return layoutFor(this.project, this.target);
+  }
+
+  /**
+   * The mark the panel describes: the last one touched. Assigning it replaces
+   * the whole selection, which is what every single-mark caller means.
+   */
+  get selectedId() {
+    return this._primary;
+  }
+
+  set selectedId(id) {
+    this.selection = new Set(id ? [id] : []);
+    this._primary = id || null;
+  }
+
+  /**
+   * Change the selection and say so.
+   *
+   * @param {string|null} id
+   * @param {boolean} additive shift-click: add or remove one, keeping the rest
+   */
+  select(id, additive = false) {
+    if (!id) {
+      if (additive) return; // shift on empty space is not "deselect everything"
+      this.selection.clear();
+      this._primary = null;
+    } else if (!additive) {
+      this.selection = new Set([id]);
+      this._primary = id;
+    } else if (this.selection.has(id)) {
+      this.selection.delete(id);
+      if (this._primary === id) this._primary = [...this.selection].pop() || null;
+    } else {
+      this.selection.add(id);
+      this._primary = id;
+    }
+    this.dispatchEvent(
+      new CustomEvent('select', {
+        detail: { id: this._primary, ids: [...this.selection] },
+      })
+    );
+  }
+
+  /** Select many at once — what the panel's list and Select all need. */
+  selectMany(ids) {
+    this.selection = new Set(ids || []);
+    this._primary = [...this.selection].pop() || null;
+    this.dispatchEvent(
+      new CustomEvent('select', {
+        detail: { id: this._primary, ids: [...this.selection] },
+      })
+    );
+    this.draw();
   }
 
   /* ---------------- shared drawing ---------------- */
@@ -187,7 +246,7 @@ export class EngraveCanvas extends EventTarget {
       if (a.t < tA - 0.001 || a.t > tB + 0.001) continue;
       const def = KINDS[a.kind] || KINDS.text;
       const isGlobal = a.scope === GLOBAL;
-      const selected = a.id === this.selectedId;
+      const selected = this.selection.has(a.id);
       const size = (a.style?.size || def.size || 13) * scale;
 
       let cents = null;
@@ -687,18 +746,33 @@ export class EngraveCanvas extends EventTarget {
 
       const hit = this._at(x, y);
       if (hit) {
-        this.selectedId = hit.id;
-        const a = this.project.annotations.find((z) => z.id === hit.id);
-        this._drag = { id: hit.id, x, y, t0: a.t, dy0: a.dy, band: hit.band, tFor: hit.tFor, moved: false };
-        c.setPointerCapture(ev.pointerId);
-        this.dispatchEvent(new CustomEvent('select', { detail: hit.id }));
+        // Grabbing a mark already in the selection moves the whole selection.
+        // Grabbing one outside it selects just that one first, so a drag never
+        // silently carries marks the user had forgotten were selected.
+        if (ev.shiftKey || !this.selection.has(hit.id)) {
+          this.select(hit.id, ev.shiftKey);
+        }
+        if (this.selection.has(hit.id)) {
+          const start = new Map();
+          for (const id of this.selection) {
+            const a = this.project.annotations.find((z) => z.id === id);
+            if (a) start.set(id, { t: a.t, t2: a.t2, dy: a.dy || 0 });
+          }
+          this._drag = { start, x, y, band: hit.band, tFor: hit.tFor, moved: false };
+          c.setPointerCapture(ev.pointerId);
+        }
         this.draw();
         return;
       }
       const e = this._bandAt(x, y, this.mode === 'write');
-      this.selectedId = null;
+      // Shift on empty space keeps the selection: it is the modifier for adding
+      // to it, so treating it as "clear" would undo the gesture in progress.
+      if (ev.shiftKey) {
+        this.draw();
+        return;
+      }
+      this.select(null);
       this.selectedBreakId = null;
-      this.dispatchEvent(new CustomEvent('select', { detail: null }));
 
       // Clicking empty space places something, and which thing depends on the
       // mode. Setup places nothing — it is about naming parts, and a stray
@@ -749,12 +823,24 @@ export class EngraveCanvas extends EventTarget {
         this.dispatchEvent(new Event('breakEdited'));
         return;
       }
-      if (this._drag) {
-        const a = this.project.annotations.find((z) => z.id === this._drag.id);
-        if (!a) return;
+      if (this._drag?.start) {
         const b = this._drag.band;
-        a.t = Math.max(0, this._drag.tFor(x) - (this._drag.tFor(this._drag.x) - this._drag.t0));
-        a.dy = this._drag.dy0 - ((y - this._drag.y) * 2 * b.span) / b.coreH;
+        // One delta for the whole selection, so marks keep their spacing from
+        // each other. Converted through the band the drag started in: the
+        // gesture is in pixels but the marks are stored in seconds and cents.
+        let dt = this._drag.tFor(x) - this._drag.tFor(this._drag.x);
+        for (const s of this._drag.start.values()) dt = Math.max(dt, -s.t);
+        const dCents = -((y - this._drag.y) * 2 * b.span) / b.coreH;
+
+        const moves = new Map();
+        for (const [id, s] of this._drag.start) {
+          moves.set(id, {
+            t: s.t + dt,
+            t2: s.t2 == null ? null : s.t2 + dt,
+            dy: s.dy + dCents,
+          });
+        }
+        nudgeMany(this.project, moves);
         this._drag.moved = true;
         this.draw();
         return;
