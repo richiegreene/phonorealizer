@@ -59,10 +59,32 @@ span with a continuation line, for *cresc.* or a held direction.
 
 | | |
 | --- | --- |
+| **Page setup** | paper size, orientation, margins |
 | **Note spacing** | how much width a second of music occupies — wider casts off into more systems |
 | **Staff spacing** | staff height, gap between parts, gap between systems, ribbon thickness |
 | **Breaks** | *Create System Break* / *Create Page Break*, scoped to Full Score or one part |
 | **Page furniture** | part names, staff rules, title, page numbers — all off but part names |
+
+### Two layouts, engraved separately
+
+Everything in Page setup and the spacing groups belongs to **one layout**, chosen
+by *Editing layout* at the top of the tab. A conductor's score and a player's
+part are engraved differently on purpose: the score has to fit every part on a
+page and can afford to be tight, while a part is read from a stand at a distance
+and wants room. Sharing one set of values would force a compromise that suits
+neither.
+
+So the score can be tight landscape while the parts are spacious portrait, and a
+single export run emits each at its own size. Defaults reflect that — the score
+starts at 64 px staves with 8 px between them, the parts at 132 and 14.
+
+*Copy these settings to the other layout* pushes one profile onto the other when
+you do want them to match. Changing the edited layout also switches the view to
+it, so a setting shows its effect as you change it rather than afterwards.
+
+Profiles are keyed by target, so giving one individual part its own profile later
+needs no change to the file format. Part ordering is deliberately not per-layout:
+it describes the work, not one view of it.
 
 Marks are clamped into their own staff. A part sitting low would otherwise push a
 "below" lyric past the clip and out of existence, and an annotation you cannot
@@ -87,7 +109,8 @@ wrapping. A break overrides that; it never merely suggests.
 
 Both **Print** and **Export → SVG** offer three layout choices: **Full Score**,
 **individual parts** (one file each), or both. Each honours the breaks scoped to
-it, exactly as shown on screen.
+it and is engraved with its own layout profile — page size, orientation and
+spacing — exactly as shown on screen.
 
 | Export | What it is |
 | --- | --- |

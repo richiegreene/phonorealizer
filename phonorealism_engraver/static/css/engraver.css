@@ -487,3 +487,12 @@ main {
 #stage {
   position: relative;
 }
+
+/* The Engrave tab always shows which layout its settings belong to. */
+.profilebar {
+  background: var(--panel-2);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius);
+  padding: 10px;
+  margin-bottom: 12px;
+}

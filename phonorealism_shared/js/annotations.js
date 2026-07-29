@@ -104,8 +104,8 @@ export function makeProject(score = null, parts = null) {
     kind: 'phonorealism-engraving',
     /** System and page breaks; see layout.js. */
     breaks: [],
-    /** Note spacing, staff spacing and page furniture; see layout.js. */
-    layout: null,
+    /** Per-layout engraving profiles (score / parts); see layout.js. */
+    layouts: null,
     score: score
       ? {
           name: score.name,

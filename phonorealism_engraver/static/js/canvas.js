@@ -17,7 +17,7 @@
 
 import { fillRibbon } from '/shared/ribbon.js';
 import { GLOBAL, KINDS } from '/shared/annotations.js';
-import { castOff, systemBands, orderedParts, defaultLayout } from '/shared/layout.js';
+import { castOff, systemBands, orderedParts, layoutFor, pageGeometry } from '/shared/layout.js';
 
 const C = {
   bg: '#0f1216',
@@ -60,7 +60,18 @@ export class EngraveCanvas extends EventTarget {
     this.selectedId = null;
     this.hoverId = null;
 
+    /**
+     * Which mode the application is in. Clicking the surface means different
+     * things in each — a mark in Write, a break in Engrave — so the surface has
+     * to know, or the two would compete for the same gesture.
+     */
+    this.mode = 'setup';
+    this.selectedBreakId = null;
+    this._cursor = null;
+
     this._hit = [];
+    this._breakHits = [];
+    this._frames = [];
     this._bands = []; // {band, xFor, tFor, x0, x1, top, height}
     this._drag = null;
     this._contentH = 0;
@@ -100,8 +111,9 @@ export class EngraveCanvas extends EventTarget {
     this.draw();
   }
 
+  /** The engraving profile for whatever layout is on screen. */
   get layout() {
-    return { ...defaultLayout(), ...(this.project?.layout || {}) };
+    return layoutFor(this.project, this.target);
   }
 
   /* ---------------- shared drawing ---------------- */
@@ -276,7 +288,18 @@ export class EngraveCanvas extends EventTarget {
       g.restore();
     }
 
-    this._drawBreaks(xFor, RULER_H, this._contentH - this.scrollY);
+    const bottom = bands.length ? bands[bands.length - 1].top + bands[bands.length - 1].height : this.h;
+    this._frames.push({
+      tA: this.t0,
+      tB: this.t0 + this.tSpan,
+      xFor,
+      tFor: (x) => this.tForGalley(x),
+      x0: this.plotX,
+      x1: this.w,
+      top: RULER_H,
+      bottom,
+    });
+    this._drawBreakFlags();
   }
 
   _drawRuler() {
@@ -294,24 +317,53 @@ export class EngraveCanvas extends EventTarget {
     }
   }
 
-  /** Break markers, so their effect is visible where they were placed. */
-  _drawBreaks(xFor, top, bottom) {
+  /**
+   * Break flags.
+   *
+   * Drawn in both views and hit-tested, so a break can be grabbed and dragged
+   * rather than deleted and re-made. In Page view a break sits at the edge of
+   * the system it created, which is where its effect actually is.
+   */
+  _drawBreakFlags() {
     const g = this.ctx;
     for (const b of this.project.breaks || []) {
       if (b.scope !== GLOBAL && b.scope !== this.target) continue;
-      const x = xFor(b.t);
-      if (x < this.plotX - 20 || x > this.w + 20) continue;
-      g.strokeStyle = b.kind === 'page' ? C.breakPage : C.breakSystem;
-      g.lineWidth = 1.5;
-      g.setLineDash([5, 4]);
+      // The frame whose span contains this break; ties go to the one that ends
+      // on it, which is the system the break brought to a close.
+      const frame =
+        this._frames.find((f) => b.t > f.tA - 1e-6 && b.t <= f.tB + 1e-6) ||
+        this._frames.find((f) => b.t >= f.tA && b.t <= f.tB);
+      if (!frame) continue;
+      const x = frame.xFor(b.t);
+      if (x < frame.x0 - 30 || x > frame.x1 + 30) continue;
+
+      const selected = b.id === this.selectedBreakId;
+      const colour = b.kind === 'page' ? C.breakPage : C.breakSystem;
+      g.strokeStyle = colour;
+      g.lineWidth = selected ? 2.5 : 1.5;
+      g.setLineDash(selected ? [] : [5, 4]);
       g.beginPath();
-      g.moveTo(x, top);
-      g.lineTo(x, bottom);
+      g.moveTo(x, frame.top);
+      g.lineTo(x, frame.bottom);
       g.stroke();
       g.setLineDash([]);
-      g.fillStyle = b.kind === 'page' ? C.breakPage : C.breakSystem;
+
+      // Grab handle at the top of the flag.
+      const label = b.kind === 'page' ? 'PAGE' : 'SYS';
       g.font = '9px ui-monospace, Menlo, monospace';
-      g.fillText(b.kind === 'page' ? 'PAGE' : 'SYS', x + 3, top + 10);
+      const w = g.measureText(label).width + 10;
+      g.fillStyle = colour;
+      g.fillRect(x, frame.top, w, 14);
+      g.fillStyle = '#0f1216';
+      g.fillText(label, x + 5, frame.top + 10);
+
+      this._breakHits.push({
+        id: b.id,
+        x: x - 6,
+        y: frame.top,
+        w: w + 10,
+        h: Math.max(20, frame.bottom - frame.top),
+      });
     }
   }
 
@@ -348,6 +400,16 @@ export class EngraveCanvas extends EventTarget {
         const tFor = (x) => sys.tA + ((x - sx0) / (sx1 - sx0)) * secondsAcross;
 
         const bands = systemBands(sys, this.score, { ...layout, staffHeight: layout.staffHeight * z, staffGap: layout.staffGap * z }, py + y);
+        this._frames.push({
+          tA: sys.tA,
+          tB: sys.tB,
+          xFor,
+          tFor,
+          x0: sx0,
+          x1: sx1,
+          top: bands.length ? bands[0].top : py + y,
+          bottom: bands.length ? bands[bands.length - 1].top + bands[bands.length - 1].height : py + y,
+        });
         for (const b of bands) {
           this._bands.push({ band: b, x0: sx0, x1: sx1, tFor, xFor });
           g.save();
@@ -389,6 +451,8 @@ export class EngraveCanvas extends EventTarget {
     g.fillRect(0, 0, this.w, this.h);
     this._hit = [];
     this._bands = [];
+    this._breakHits = [];
+    this._frames = [];
     if (!this.score || !this.project?.parts?.length) {
       g.fillStyle = C.label;
       g.font = '13px system-ui, sans-serif';
@@ -401,18 +465,39 @@ export class EngraveCanvas extends EventTarget {
       g.textAlign = 'left';
       return;
     }
-    if (this.view === 'page') this._drawPages();
-    else this._drawGalley();
+    if (this.view === 'page') {
+      this._drawPages();
+      this._drawBreakFlags();
+    } else {
+      this._drawGalley();
+    }
   }
 
   /* ---------------- interaction ---------------- */
 
-  _bandAt(x, y) {
+  /**
+   * The staff at a point, or failing that the nearest one.
+   *
+   * Exact hit-testing would make the gaps between staves dead to clicks, which
+   * is needlessly unforgiving when placing a mark — the intent is unambiguous,
+   * so snap to the closest staff rather than ignoring the gesture.
+   */
+  _bandAt(x, y, nearest = false) {
+    let best = null;
+    let bestDist = Infinity;
     for (const e of this._bands) {
       const b = e.band;
-      if (y >= b.top && y < b.top + b.height && x >= e.x0 - 90 && x <= e.x1) return e;
+      if (x < e.x0 - 90 || x > e.x1) continue;
+      if (y >= b.top && y < b.top + b.height) return e;
+      if (!nearest) continue;
+      const d = y < b.top ? b.top - y : y - (b.top + b.height);
+      if (d < bestDist) {
+        bestDist = d;
+        best = e;
+      }
     }
-    return null;
+    // Only snap across a plausible gap, not from the far end of the sheet.
+    return best && bestDist < 60 ? best : null;
   }
 
   _at(x, y) {
@@ -421,6 +506,23 @@ export class EngraveCanvas extends EventTarget {
       if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) return h;
     }
     return null;
+  }
+
+  _breakAt(x, y) {
+    for (let i = this._breakHits.length - 1; i >= 0; i--) {
+      const h = this._breakHits[i];
+      if (x >= h.x && x <= h.x + h.w && y >= h.y && y <= h.y + h.h) return h;
+    }
+    return null;
+  }
+
+  /** The system frame under a point, used to convert x back into time. */
+  _frameAt(x, y) {
+    return (
+      this._frames.find((f) => x >= f.x0 - 40 && x <= f.x1 + 40 && y >= f.top - 20 && y <= f.bottom + 20) ||
+      this._frames[0] ||
+      null
+    );
   }
 
   _bindPointer() {
@@ -432,6 +534,22 @@ export class EngraveCanvas extends EventTarget {
 
     c.addEventListener('pointerdown', (ev) => {
       const [x, y] = pos(ev);
+
+      // Breaks take the gesture first in Engrave mode, so their flags stay
+      // grabbable even where they cross a mark.
+      if (this.mode === 'engrave') {
+        const bh = this._breakAt(x, y);
+        if (bh) {
+          this.selectedBreakId = bh.id;
+          const b = this.project.breaks.find((z) => z.id === bh.id);
+          this._drag = { breakId: bh.id, x, t0: b.t, moved: false };
+          c.setPointerCapture(ev.pointerId);
+          this.dispatchEvent(new CustomEvent('selectBreak', { detail: bh.id }));
+          this.draw();
+          return;
+        }
+      }
+
       const hit = this._at(x, y);
       if (hit) {
         this.selectedId = hit.id;
@@ -442,9 +560,30 @@ export class EngraveCanvas extends EventTarget {
         this.draw();
         return;
       }
-      const e = this._bandAt(x, y);
+      const e = this._bandAt(x, y, this.mode === 'write');
       this.selectedId = null;
+      this.selectedBreakId = null;
       this.dispatchEvent(new CustomEvent('select', { detail: null }));
+
+      // Clicking empty space places something, and which thing depends on the
+      // mode. Setup places nothing — it is about naming parts, and a stray
+      // click there should not alter the music.
+      if (this.mode === 'engrave') {
+        const f = this._frameAt(x, y);
+        if (f && x >= f.x0) {
+          this.dispatchEvent(
+            new CustomEvent('placeBreak', {
+              detail: { t: Math.max(0, f.tFor(x)), partId: e ? e.band.part.id : null },
+            })
+          );
+        }
+        this.draw();
+        return;
+      }
+      if (this.mode !== 'write') {
+        this.draw();
+        return;
+      }
       if (e && x >= e.x0) {
         const b = e.band;
         // Report the exact spot clicked, in cents relative to the band centre,
@@ -461,6 +600,20 @@ export class EngraveCanvas extends EventTarget {
 
     c.addEventListener('pointermove', (ev) => {
       const [x, y] = pos(ev);
+      if (this._drag?.breakId) {
+        const b = this.project.breaks.find((z) => z.id === this._drag.breakId);
+        if (!b) return;
+        // Convert through whichever frame the pointer is over. In Page view the
+        // layout recasts as the break moves, so re-reading the frame each time
+        // keeps the flag under the cursor instead of chasing a stale mapping.
+        const f = this._frameAt(x, y);
+        if (f) b.t = Math.max(0, f.tFor(x));
+        this._drag.moved = true;
+        this.draw();
+        // Live, so the Breaks list and the flag never disagree mid-gesture.
+        this.dispatchEvent(new Event('breakEdited'));
+        return;
+      }
       if (this._drag) {
         const a = this.project.annotations.find((z) => z.id === this._drag.id);
         if (!a) return;
@@ -471,17 +624,25 @@ export class EngraveCanvas extends EventTarget {
         this.draw();
         return;
       }
-      const hit = this._at(x, y);
+      const overBreak = this.mode === 'engrave' ? this._breakAt(x, y) : null;
+      const hit = overBreak ? null : this._at(x, y);
       const id = hit ? hit.id : null;
-      if (id !== this.hoverId) {
-        this.hoverId = id;
-        c.style.cursor = id ? 'grab' : 'crosshair';
+      const want = overBreak ? 'ew-resize' : id ? 'grab' : 'crosshair';
+      // Compare against the cursor actually in effect. Comparing hover ids alone
+      // left the cursor stuck on whatever it was last set to, because "nothing
+      // hovered now" and "nothing hovered before" look identical.
+      if (want !== this._cursor) {
+        this._cursor = want;
+        c.style.cursor = want;
       }
+      this.hoverId = id;
     });
 
     const end = (ev) => {
       if (this._drag) {
-        if (this._drag.moved) this.dispatchEvent(new Event('edited'));
+        if (this._drag.moved) {
+          this.dispatchEvent(new Event(this._drag.breakId ? 'breakEdited' : 'edited'));
+        }
         this._drag = null;
         try {
           c.releasePointerCapture(ev.pointerId);
@@ -539,7 +700,7 @@ export class EngraveCanvas extends EventTarget {
   fitAll() {
     if (this.view === 'page') {
       this.scrollY = 0;
-      this.pageZoom = Math.min(0.95, (this.h - 60) / (this.layout.page?.h || 794));
+      this.pageZoom = Math.min(0.95, (this.h - 60) / pageGeometry(this.layout).h);
     } else if (this.score) {
       this.t0 = 0;
       this.tSpan = this.score.duration || 20;

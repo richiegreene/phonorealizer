@@ -94,6 +94,44 @@
 
         <!-- ============ ENGRAVE ============ -->
         <div class="tabpane hidden" data-pane="engrave">
+          <div class="profilebar">
+            <label class="field" style="margin:0">
+              <span>Editing layout</span>
+              <select id="layoutProfile">
+                <option value="score">Full Score</option>
+                <option value="parts">Parts</option>
+              </select>
+            </label>
+            <div class="hint" style="margin-top:8px">
+              Page setup and spacing below belong to this layout alone. A
+              conductor's score and a player's part are engraved differently on
+              purpose.
+            </div>
+            <button class="sm" id="copyProfile" style="margin-top:8px">Copy these settings to the other layout</button>
+          </div>
+
+          <details class="group" open>
+            <summary>Page setup</summary>
+            <div class="body">
+              <label class="field">
+                <span>Paper size</span>
+                <select id="pageSize"></select>
+              </label>
+              <label class="field">
+                <span>Orientation</span>
+                <select id="orientation">
+                  <option value="landscape">Landscape</option>
+                  <option value="portrait">Portrait</option>
+                </select>
+              </label>
+              <label class="field">
+                <span id="marginLabel">Margins</span>
+                <input type="range" id="margin" min="12" max="140" step="2" value="54" />
+              </label>
+              <div class="hint" id="pageDims"></div>
+            </div>
+          </details>
+
           <details class="group" open>
             <summary>Note spacing</summary>
             <div class="body">
@@ -220,6 +258,37 @@
           <div class="spacer"></div>
           <button class="sm" id="mCancel">Cancel</button>
           <button class="primary" id="mSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Place / edit a break -->
+    <div id="breakModal" class="modal hidden">
+      <div class="modal-card" style="max-width: 420px">
+        <h3 id="breakTitle">Create break</h3>
+        <div class="row">
+          <label class="field" style="flex: 1">
+            <span>Type</span>
+            <select id="bKind">
+              <option value="system">System break</option>
+              <option value="page">Page break</option>
+            </select>
+          </label>
+          <label class="field" style="flex: 1">
+            <span>Applies to</span>
+            <select id="bScope"></select>
+          </label>
+        </div>
+        <label class="field">
+          <span>Time (s)</span>
+          <input type="number" id="bTime" step="0.01" min="0" />
+        </label>
+        <div class="hint">Drag the flag on the score to adjust this afterwards.</div>
+        <div class="row" style="margin-top: 12px">
+          <button class="sm danger hidden" id="bDelete">Delete</button>
+          <div class="spacer"></div>
+          <button class="sm" id="bCancel">Cancel</button>
+          <button class="primary" id="bSave">Save</button>
         </div>
       </div>
     </div>

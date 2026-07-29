@@ -15,7 +15,10 @@ import {
   addAnnotation, removeAnnotation, updateAnnotation, explodeToParts,
   allSorted, toPartMap,
 } from '/shared/annotations.js';
-import { defaultLayout, addBreak, removeBreak, orderedParts } from '/shared/layout.js';
+import {
+  defaultLayouts, layoutFor, profileKeyFor, pageGeometry, PAGE_SIZES,
+  addBreak, removeBreak, orderedParts,
+} from '/shared/layout.js';
 import { EngraveCanvas } from './canvas.js';
 import { openPrintView, downloadSVG } from './print.js';
 
@@ -27,16 +30,49 @@ const state = {
   filter: 'all',
   editingId: null,
   pendingPlace: null,
+  editingBreakId: null,
   dirty: false,
   mode: 'export', // or 'print', for the shared dialogue
 };
 
 const sheet = new EngraveCanvas($('sheet'));
 
-/** Layout settings live on the project so they save with it. */
+/**
+ * The layout profile currently being edited, and the one the canvas is showing.
+ *
+ * Settings live on the project so they save with it. Older projects carried a
+ * single `layout`; that is promoted to both profiles on load rather than
+ * discarded.
+ */
+function ensureLayouts() {
+  const p = state.project;
+  if (!p.layouts) {
+    p.layouts = defaultLayouts();
+    if (p.layout) {
+      p.layouts.score = { ...p.layouts.score, ...p.layout };
+      p.layouts.parts = { ...p.layouts.parts, ...p.layout };
+      delete p.layout;
+    }
+  }
+  return p.layouts;
+}
+
+/** The profile the Engrave panel edits. */
+function editedProfile() {
+  return $('layoutProfile')?.value === 'parts' ? 'parts' : 'score';
+}
+
+function editedLayout() {
+  const set = ensureLayouts();
+  const key = editedProfile();
+  if (!set[key]) set[key] = defaultLayouts()[key];
+  return set[key];
+}
+
+/** The profile governing what is currently drawn. */
 function layout() {
-  if (!state.project.layout) state.project.layout = defaultLayout();
-  return state.project.layout;
+  ensureLayouts();
+  return layoutFor(state.project, sheet.target);
 }
 
 /* ------------------------------------------------------------------ *
@@ -49,6 +85,17 @@ for (const tab of document.querySelectorAll('.tab')) {
     for (const p of document.querySelectorAll('.tabpane')) {
       p.classList.toggle('hidden', p.dataset.pane !== tab.dataset.tab);
     }
+    // The surface reads the mode to decide what a click on empty space means.
+    sheet.mode = tab.dataset.tab;
+    $('zoomHint').textContent =
+      tab.dataset.tab === 'write'
+        ? 'click to place a mark'
+        : tab.dataset.tab === 'engrave'
+          ? 'click to place a break · drag a flag to move it'
+          : sheet.view === 'page'
+            ? 'scroll to page · ⌘-scroll to zoom'
+            : 'scroll to zoom · shift-scroll to pan';
+    sheet.draw();
   };
 }
 
@@ -70,7 +117,7 @@ async function ingestScore(file) {
     state.score = score;
     if (!state.project.parts.length) {
       const p = makeProject(score, defaultParts(score).map(stripAuto));
-      p.layout = layout();
+      p.layouts = ensureLayouts();
       p.breaks = state.project.breaks || [];
       state.project = p;
     } else {
@@ -220,7 +267,9 @@ function renderParts() {
 }
 
 $('lowestAtBottom').onchange = () => {
-  layout().lowestAtBottom = $('lowestAtBottom').checked;
+  // Part ordering describes the work, not one layout of it.
+  const set = ensureLayouts();
+  for (const key of Object.keys(set)) set[key].lowestAtBottom = $('lowestAtBottom').checked;
   touched();
 };
 
@@ -244,6 +293,9 @@ function renderTargetSelect() {
 
 $('targetSelect').onchange = () => {
   sheet.target = $('targetSelect').value;
+  // Editing follows viewing: the Engrave panel should describe what is on screen.
+  $('layoutProfile').value = profileKeyFor(sheet.target);
+  syncControls();
   sheet.draw();
   renderBreaks();
 };
@@ -490,20 +542,129 @@ const spacing = [
 for (const [key, label, fmt] of spacing) {
   $(key).oninput = () => {
     const v = parseFloat($(key).value);
-    layout()[key] = v;
+    editedLayout()[key] = v;
     $(`${key}Label`).textContent = `${label} — ${fmt(v)}`;
-    markDirty();
-    sheet.draw();
+    afterLayoutChange();
   };
 }
 
 for (const key of ['showPartLabels', 'showStaffLines', 'showTitle', 'showPageNumbers']) {
   $(key).onchange = () => {
-    layout()[key] = $(key).checked;
-    markDirty();
-    sheet.draw();
+    editedLayout()[key] = $(key).checked;
+    afterLayoutChange();
   };
 }
+
+/* ---- page setup ---- */
+
+$('pageSize').innerHTML = Object.entries(PAGE_SIZES)
+  .map(([k, v]) => `<option value="${k}">${v.label}</option>`)
+  .join('');
+
+$('pageSize').onchange = () => {
+  editedLayout().pageSize = $('pageSize').value;
+  afterLayoutChange();
+};
+$('orientation').onchange = () => {
+  editedLayout().orientation = $('orientation').value;
+  afterLayoutChange();
+};
+$('margin').oninput = () => {
+  const v = parseFloat($('margin').value);
+  editedLayout().margin = v;
+  $('marginLabel').textContent = `Margins — ${v} px`;
+  afterLayoutChange();
+};
+
+/**
+ * Switching the edited layout also shows it, so the effect of a setting is
+ * visible while it is being changed rather than after switching views.
+ */
+$('layoutProfile').onchange = () => {
+  const key = editedProfile();
+  if (key === 'score') {
+    $('targetSelect').value = 'score';
+  } else {
+    const first = orderedParts(state.project.parts, layout())[0];
+    if (first) $('targetSelect').value = first.id;
+  }
+  sheet.target = $('targetSelect').value;
+  syncControls();
+  sheet.draw();
+  renderBreaks();
+};
+
+$('copyProfile').onclick = () => {
+  const set = ensureLayouts();
+  const from = editedProfile();
+  const to = from === 'score' ? 'parts' : 'score';
+  set[to] = { ...set[from] };
+  markDirty();
+  $('copyProfile').textContent = `Copied to ${to === 'score' ? 'Full Score' : 'Parts'}`;
+  setTimeout(() => ($('copyProfile').textContent = 'Copy these settings to the other layout'), 1400);
+};
+
+function afterLayoutChange() {
+  markDirty();
+  $('pageDims').textContent = pageDimsText();
+  sheet.draw();
+}
+
+function pageDimsText() {
+  const g = pageGeometry(editedLayout());
+  return `Page ${g.w} × ${g.h} px at 96 dpi · ${g.margin} px margins`;
+}
+
+sheet.addEventListener('placeBreak', (ev) => {
+  openBreakModal(null, ev.detail.t);
+});
+sheet.addEventListener('selectBreak', (ev) => {
+  state.editingBreakId = ev.detail;
+  renderBreaks();
+});
+sheet.addEventListener('breakEdited', () => {
+  markDirty();
+  renderBreaks();
+});
+
+function openBreakModal(id, t) {
+  const b = id ? (state.project.breaks || []).find((x) => x.id === id) : null;
+  state.editingBreakId = id;
+  $('breakTitle').textContent = b ? 'Edit break' : 'Create break';
+  scopeOptions($('bScope'), b ? b.scope : $('breakScope').value || GLOBAL);
+  $('bKind').value = b ? b.kind : 'system';
+  $('bTime').value = (b ? b.t : t || 0).toFixed(2);
+  $('bDelete').classList.toggle('hidden', !b);
+  $('breakModal').classList.remove('hidden');
+}
+
+$('bSave').onclick = () => {
+  const spec = {
+    kind: $('bKind').value,
+    scope: $('bScope').value,
+    t: parseFloat($('bTime').value) || 0,
+  };
+  if (state.editingBreakId) {
+    const b = (state.project.breaks || []).find((x) => x.id === state.editingBreakId);
+    if (b) Object.assign(b, spec);
+  } else {
+    const made = addBreak(state.project, spec);
+    state.editingBreakId = made.id;
+    sheet.selectedBreakId = made.id;
+  }
+  $('breakModal').classList.add('hidden');
+  touched();
+};
+
+$('bDelete').onclick = () => {
+  if (state.editingBreakId) removeBreak(state.project, state.editingBreakId);
+  state.editingBreakId = null;
+  sheet.selectedBreakId = null;
+  $('breakModal').classList.add('hidden');
+  touched();
+};
+
+$('bCancel').onclick = () => $('breakModal').classList.add('hidden');
 
 function breakTime() {
   // The selected mark is usually what the break is meant to sit against.
@@ -530,9 +691,19 @@ function renderBreaks() {
   }
   for (const b of list) {
     const row = document.createElement('div');
-    row.className = 'item';
+    row.className = 'item' + (b.id === state.editingBreakId ? ' selected' : '');
     const grow = document.createElement('div');
     grow.className = 'grow';
+    grow.onclick = () => {
+      state.editingBreakId = b.id;
+      sheet.selectedBreakId = b.id;
+      if (sheet.view === 'galley' && (b.t < sheet.t0 || b.t > sheet.t0 + sheet.tSpan)) {
+        sheet.t0 = Math.max(0, b.t - sheet.tSpan / 3);
+      }
+      sheet.draw();
+      renderBreaks();
+    };
+    grow.ondblclick = () => openBreakModal(b.id);
     const nm = document.createElement('div');
     nm.className = 'nm';
     nm.textContent = b.kind === 'page' ? 'Page break' : 'System break';
@@ -628,7 +799,7 @@ $('openBtn').onclick = async () => {
       const doc = await (await fetch(`/api/projects/${encodeURIComponent(p.name)}`)).json();
       state.project = doc;
       if (!state.project.breaks) state.project.breaks = [];
-      if (!state.project.layout) state.project.layout = defaultLayout();
+      ensureLayouts();
       $('projectName').value = p.name;
       $('openModal').classList.add('hidden');
       syncControls();
@@ -687,9 +858,9 @@ $('expSvg').onclick = () => {
   $('exportModal').classList.add('hidden');
 };
 
-/** Push saved layout values back into the controls after opening a project. */
+/** Push the edited profile's values back into the controls. */
 function syncControls() {
-  const l = layout();
+  const l = editedLayout();
   for (const [key, label, fmt] of spacing) {
     if (l[key] != null) $(key).value = l[key];
     $(`${key}Label`).textContent = `${label} — ${fmt(parseFloat($(key).value))}`;
@@ -697,19 +868,33 @@ function syncControls() {
   for (const key of ['showPartLabels', 'showStaffLines', 'showTitle', 'showPageNumbers']) {
     $(key).checked = !!l[key];
   }
+  $('pageSize').value = l.pageSize || 'a4';
+  $('orientation').value = l.orientation || 'landscape';
+  $('margin').value = l.margin ?? 54;
+  $('marginLabel').textContent = `Margins — ${l.margin ?? 54} px`;
+  $('pageDims').textContent = pageDimsText();
   $('lowestAtBottom').checked = l.lowestAtBottom !== false;
 }
 
 window.addEventListener('keydown', (ev) => {
   if (ev.key === 'Escape') {
-    for (const id of ['modal', 'openModal', 'exportModal']) $(id).classList.add('hidden');
+    for (const id of ['modal', 'openModal', 'exportModal', 'breakModal']) {
+      $(id).classList.add('hidden');
+    }
   }
   if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName || '')) return;
-  if ((ev.key === 'Delete' || ev.key === 'Backspace') && state.editingId) {
-    removeAnnotation(state.project, state.editingId);
-    state.editingId = null;
-    sheet.selectedId = null;
-    touched();
+  if (ev.key === 'Delete' || ev.key === 'Backspace') {
+    if (state.editingId) {
+      removeAnnotation(state.project, state.editingId);
+      state.editingId = null;
+      sheet.selectedId = null;
+      touched();
+    } else if (state.editingBreakId) {
+      removeBreak(state.project, state.editingBreakId);
+      state.editingBreakId = null;
+      sheet.selectedBreakId = null;
+      touched();
+    }
   }
   if (ev.key === 's' && (ev.metaKey || ev.ctrlKey)) {
     ev.preventDefault();

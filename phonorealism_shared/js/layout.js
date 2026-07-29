@@ -21,13 +21,39 @@
 
 export const GLOBAL = '*';
 
-/** Default page: A4 landscape at 96 dpi. */
+/**
+ * Paper sizes at 96 dpi, stored as long and short edges so orientation is a
+ * separate choice rather than a different size entry.
+ */
+export const PAGE_SIZES = {
+  a4: { label: 'A4', long: 1123, short: 794 },
+  letter: { label: 'US Letter', long: 1056, short: 816 },
+  a3: { label: 'A3', long: 1587, short: 1123 },
+  tabloid: { label: 'Tabloid', long: 1632, short: 1056 },
+};
+
+/** Resolve a layout's page setup into concrete dimensions. */
+export function pageGeometry(layout = {}) {
+  const size = PAGE_SIZES[layout.pageSize] || PAGE_SIZES.a4;
+  const landscape = (layout.orientation || 'landscape') === 'landscape';
+  return {
+    w: landscape ? size.long : size.short,
+    h: landscape ? size.short : size.long,
+    margin: layout.margin ?? 54,
+  };
+}
+
 export function defaultPage() {
-  return { w: 1123, h: 794, margin: 54 };
+  return pageGeometry({});
 }
 
 export function defaultLayout() {
   return {
+    /* --- page setup --- */
+    pageSize: 'a4',
+    orientation: 'landscape',
+    margin: 54,
+
     /* --- note spacing (horizontal) --- */
     pxPerSecond: 46,
 
@@ -53,9 +79,57 @@ export function defaultLayout() {
 
     /** Lowest-sounding part at the bottom, as in a conventional score. */
     lowestAtBottom: true,
-
-    page: defaultPage(),
   };
+}
+
+/**
+ * Separate layout profiles for the full score and for the parts.
+ *
+ * A conductor's score and a player's part are engraved differently on purpose:
+ * the score has to fit every part on a page and can afford to be tight, while a
+ * part is read from a stand at a distance and wants room. Sharing one set of
+ * spacing values would force a compromise that suits neither.
+ *
+ * Keyed by target so a single part can later be given its own profile without
+ * changing the shape of the file.
+ */
+export function defaultLayouts() {
+  return {
+    score: {
+      ...defaultLayout(),
+      orientation: 'landscape',
+      staffHeight: 64,
+      staffGap: 8,
+      systemGap: 24,
+      ribbonScale: 13,
+      pxPerSecond: 40,
+    },
+    parts: {
+      ...defaultLayout(),
+      orientation: 'landscape',
+      staffHeight: 132,
+      staffGap: 14,
+      systemGap: 46,
+      ribbonScale: 24,
+      pxPerSecond: 64,
+    },
+  };
+}
+
+/**
+ * The layout profile governing a target: the score profile for the full score,
+ * a part's own profile if it has one, otherwise the shared parts profile.
+ */
+export function layoutFor(project, target = 'score') {
+  const set = project?.layouts || {};
+  const chosen =
+    target === 'score' ? set.score : set[target] || set.parts;
+  return { ...defaultLayout(), ...(chosen || {}) };
+}
+
+/** Which profile key a target edits. */
+export function profileKeyFor(target) {
+  return target === 'score' ? 'score' : 'parts';
 }
 
 /**
@@ -90,8 +164,8 @@ export function breaksFor(project, target) {
  */
 export function castOff(score, project, opts = {}) {
   const target = opts.target || 'score';
-  const layout = { ...defaultLayout(), ...(project.layout || {}), ...(opts.layout || {}) };
-  const page = { ...defaultPage(), ...(layout.page || {}) };
+  const layout = { ...layoutFor(project, target), ...(opts.layout || {}) };
+  const page = pageGeometry(layout);
 
   const all = project.parts || [];
   const parts =
